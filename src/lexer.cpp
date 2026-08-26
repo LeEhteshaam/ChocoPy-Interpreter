@@ -7,6 +7,7 @@ The Lexer takes in a sequence of chars and makes tokens.
 #include <string_view>
 #include <variant>
 #include <unordered_map>
+#include <format>
 
 enum TokenType {
     // Line structure 
@@ -33,7 +34,6 @@ enum TokenType {
 // Check if the lexeme is a keyword, delimiter, line structure or operator 
 std::unordered_map<std::string_view, TokenType> tokenMap {
     {"\n", NEW_LINE},
-    {"\t", INDENT}, 
     {"str", IDENTIFIER},
     {"int", IDENTIFIER},
     {"+", ADD},
@@ -85,7 +85,7 @@ struct Token {
     std::variant<int, std::string_view, std::monostate> literal;
 };
 
-bool wordBreak(char ch) {
+bool isAlpha(char ch) {
     return std::isalnum(ch) || ch == '_';
 }
 
@@ -153,7 +153,7 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
         return res;
     }
 
-
+    char curChar;
     int start = *cur;
 
     // How many chars have we seen
@@ -161,12 +161,13 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
 
     switch (buffer[start]) {
         
-        case '\n':
+        case '\n': {
             counter += 1;
             struct Token res = makeToken(buffer, cur, counter, column, *line);
             *line += 1;
             *column = 0;
             return res;
+        }
 
         case '+': case '*': case '%': case ')': case '(': 
         case '-': case ',': case '.': case ':': case ']':
@@ -176,16 +177,26 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
 
         case '=': case '!': case '>': case '<':
             // check if the next char is an equal sign
-            if (buffer[start + 1] == '=') {
+            if (start + 1 < buffer.size() && buffer[start + 1] == '=') {
                 counter += 2;
+            } else {
+                counter += 1;
             }
             return makeToken(buffer, cur, counter, column, *line);
+        
+        case '/':
+
+            if (start + 1 < buffer.size() && buffer[start + 1] == '/') { 
+                counter += 2;
+                return makeToken(buffer, cur, counter, column, *line);
+            } else {
+                throw std::runtime_error(std::format("LexicalError: Single '/' is not supported (detected at line {})", *line));
+            }
 
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
             //get the number
-            char nxt;
-            while (start + counter < buffer.length() && (std::isdigit(nxt = buffer[start + counter]))) {
+            while (start + counter < buffer.length() && (std::isdigit(buffer[start + counter]))) {
                 counter += 1;
             }
             return makeToken(buffer, cur, counter, column, *line);
@@ -195,9 +206,9 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
             counter += 1;
 
             while (start + counter < buffer.size()) {
-                char cur = buffer[start + counter];
+                curChar = buffer[start + counter];
                 
-                if (cur == '\n' || start + counter >= buffer.size()) {
+                if (curChar == '\n') {
                     break;
                 }
 
@@ -208,26 +219,28 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
             return nextToken(buffer, cur, line, column);
         
         // Must be a string
-        case '"':
+        case '"': {
             counter += 1;
             int originalLine =  *line;
 
             while (true) {
 
                 if (start + counter >= buffer.length()) {
-                    // replace with customer error message later
-                    std::printf("SyntaxError: unterminated string literal (detected at line {})", originalLine);
-                    return;
+                    throw std::runtime_error(std::format("LexicalError: unterminated string literal (detected at line {})", originalLine));                    
                 }
 
-                char cur = buffer[start + counter];
+                char curChar = buffer[start + counter];
+                
+                if (curChar == '"') {
+                    break;
+                }
 
-                if (cur == '\\') {
+                if (curChar == '\\') {
                     counter += 2;
                     continue;
                 }
 
-                if (cur == '\n') {
+                if (curChar == '\n') {
                     *line += 1;
                 }
 
@@ -237,13 +250,12 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
             }
 
             return makeToken(buffer, cur, counter, column, originalLine);
+        }
 
         // Must be a keyword 
         default:
-            char nxt;
-
             // iterate until delimtier 
-            while (!wordBreak(nxt = buffer[start + counter])) {
+            while (start + counter < buffer.size() && isAlpha(buffer[start + counter])) {
                 counter += 1;
             }
 
