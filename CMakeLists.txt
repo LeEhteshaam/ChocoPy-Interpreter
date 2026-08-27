@@ -3,4 +3,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(ChocoPy)
-add_executable(interp ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+# Build main interpreter
+add_executable(interp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
+)
+
+# Build test runner
+add_executable(test_lexer 
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_lexer.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
+)
