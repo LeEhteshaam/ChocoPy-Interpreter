@@ -160,6 +160,14 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
     int counter = 0;
 
     switch (buffer[start]) {
+
+        case ' ': case '\t':
+            while (start + counter < buffer.length() && 
+                  (buffer[start + counter] == ' ' || buffer[start + counter] == '\t')) {
+                counter += 1;
+            }
+            advance(cur, column, counter);
+            return nextToken(buffer, cur, line, column);
         
         case '\n': {
             counter += 1;
@@ -241,7 +249,7 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
                 }
 
                 if (curChar == '\n') {
-                    *line += 1;
+                    throw std::runtime_error(std::format("LexicalError: string literal cannot span multiple lines (detected at line {})", *line));
                 }
 
                 // just a normal char 
@@ -261,4 +269,105 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
 
             return makeToken(buffer, cur, counter, column, *line);
     } 
+}
+
+std::vector<Token> tokenizer(std::string_view buffer) {
+    std::vector<Token> tokens;
+    std::vector<int> indentStack = {0};
+
+    int line = 1; 
+    int column = 0;
+    int cur = 0;
+
+    int lastLine = 0;
+    int peekCur;
+    int indentLevel = 0;
+    bool isBlank = false;
+
+    // iterate until we see a EOF token
+    while (true) {
+
+        // are we on a new line, if so we need to track indentation level
+        if (lastLine != line) {
+            
+            // get identation level
+            peekCur = cur;
+            isBlank = false;
+
+            
+            while (peekCur < buffer.size() && (buffer[peekCur] == ' ' || buffer[peekCur] == '\t')) {
+                if (buffer[peekCur] == ' ') {
+                    indentLevel += 1;
+                } else {
+                    indentLevel += 8 - (indentLevel % 8);
+                }
+                peekCur += 1;
+            }
+
+            // make sure that the line is not a new line or a comment
+            if (peekCur < buffer.size() && (buffer[peekCur] == '\n' || buffer[peekCur] == '#')) {
+
+                // This is a blank line
+                isBlank = true;
+
+            }
+            
+            else {
+
+                // add a indent token
+                if (indentLevel > indentStack.back()) {
+                    indentStack.push_back(indentLevel);
+                    Token indentToken = {INDENT, line, 0, "", 0, std::monostate{}};
+                    tokens.push_back(indentToken);
+                }
+
+                // add dedent tokens
+                else if (indentLevel < indentStack.back()) { 
+
+                    while (indentLevel < indentStack.back()) {
+                        indentStack.pop_back();
+                        Token dedentToken = {DEDENT, line, 0, "", 0, std::monostate{}};
+                        tokens.push_back(dedentToken);
+                    }
+                }
+
+                if (indentLevel != indentStack.back()) {
+                    throw std::runtime_error(std::format("IndentationError: unindent does not match any outer indentation level (detected at line {})", line));
+                }
+            }
+
+            column = indentLevel;
+            cur = peekCur;
+            lastLine = line;
+            indentLevel = 0; 
+        }
+
+
+        struct Token next = nextToken(buffer, &cur, &line, &column);
+
+        // We need to add dedent tokens 
+        if (next.type == END_OF_FILE) {
+            while (indentStack.back() != 0) {
+                indentStack.pop_back();
+                Token dedentToken = {DEDENT, line, 0, "", 0, std::monostate{}};
+                tokens.push_back(dedentToken);
+            }
+
+            tokens.push_back(next);
+            break;
+        }
+
+        else if (next.type == NEW_LINE) {
+            // Only add if its not a blank line 
+            if (!isBlank) {
+                tokens.push_back(next);
+            }
+        }
+        else {
+            tokens.push_back(next);
+        }
+    } 
+
+    return tokens;
+
 }
