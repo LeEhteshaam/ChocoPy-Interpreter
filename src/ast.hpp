@@ -1,0 +1,30 @@
+#pragma once 
+
+#include <memory>
+#include "lexer.hpp"
+
+struct expr;
+
+struct literal {
+    Token token;
+    std::variant<int, bool, std::string_view, std::monostate> val;
+};
+
+struct unary {
+    Token op;
+    std::unique_ptr<expr> right;
+};
+
+struct binary {
+    std::unique_ptr<expr> left;
+    Token op;
+    std::unique_ptr<expr> right;   
+};
+
+struct grouping {
+    std::unique_ptr<expr> expression;
+};
+
+struct expr {
+    std::variant<literal, unary, binary, grouping> node;
+};
