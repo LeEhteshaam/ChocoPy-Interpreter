@@ -4,35 +4,35 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-void printAST(const expr& expression) {
+void printAST(const expr& expression, std::ostream& out) {
     std::visit(overloaded {
 
-        [] (const literal& l) {
+        [&out] (const literal& l) {
             std::visit(overloaded {
-                [] (int num) {std::print("{}", num);},
-                [] (bool b) {std::print("{}", b);},
-                [] (std::string_view s) {std::print("{}", s);}, 
-                [] (std::monostate m) {std::print("null");}
+                [&out] (int num) { std::print(out, "{}", num); },
+                [&out] (bool b) { std::print(out, "{}", b ? "True" : "False"); },
+                [&out] (std::string_view s) { std::print(out, "{}", s); }, 
+                [&out] (std::monostate) { std::print(out, "null"); }
             }, l.val);
         },
 
-        [] (const binary& b) {
-            printAST(*b.left);
+        [&out] (const binary& b) {
+            printAST(*b.left, out);
             std::string_view op = b.op.lexeme;
-            std::print(" {} ", op);
-            printAST(*b.right);
+            std::print(out, " {} ", op);
+            printAST(*b.right, out);
         },
 
-        [] (const unary& u) {
+        [&out] (const unary& u) {
             std::string_view lexeme = u.op.lexeme;
-            std::print("{}", lexeme);
-            printAST(*u.right);
+            std::print(out, "{}", lexeme);
+            printAST(*u.right, out);
         },
 
-        [] (const grouping& g) {
-            std::print("(");
-            printAST(*g.expression);
-            std::print(")");
+        [&out] (const grouping& g) {
+            std::print(out, "(");
+            printAST(*g.expression, out);
+            std::print(out, ")");
         }
     }
     , expression.node);

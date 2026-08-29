@@ -169,7 +169,7 @@ void test_tokenizer_single_slash() {
     std::cout << "  test_tokenizer_single_slash passed!\n";
 }
 
-int main() {
+void run_lexer_tests() {
     std::cout << "Running MakeToken unit tests...\n";
     test_make_token_map();
     test_make_token_literals();
@@ -181,7 +181,4 @@ int main() {
     test_tokenizer_unterminated_string();
     test_tokenizer_bad_indentation();
     test_tokenizer_single_slash();
-
-    std::cout << "All unit tests passed successfully!\n";
-    return 0;
 }
