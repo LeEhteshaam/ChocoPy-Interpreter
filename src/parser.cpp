@@ -1,10 +1,18 @@
 #include <ast.hpp>
 #include <utility>
 #include <initializer_list>
+#include <format>
+#include <ranges>
+
+class ParseError : public std::runtime_error {
+    public:
+        ParseError() : std::runtime_error("") {}
+};
 
 class Parser { 
     private:
         std::vector<Token> tokens;
+        std::vector<std::string> errors;
         int counter = 0;
 
         // Helper functions for traversing token stream
@@ -46,6 +54,34 @@ class Parser {
                 }
             }
             return false;
+        }
+
+        // Panic mode error recovery
+        void synchronize() {
+            advance(); // Consume the token that initially caused the error
+
+            while (!isAtEnd()) {
+                if (previous().type == NEW_LINE) return;
+
+                // Peek at the next token without advancing past it
+                TokenType type = peek().type;
+                if (type == CLASS || type == DEF || type == IF || 
+                    type == WHILE || type == PRINT || type == RETURN) {
+                    return;
+                }
+
+                advance();
+            }
+        }
+
+        Token consume(TokenType type, std::string message) {
+            if (check(type)) {
+                return advance();
+            }
+            
+            // add the error    
+            errors.push_back(std::move(message));
+            throw(ParseError());
         }
 
         struct expr expression() {
@@ -147,19 +183,52 @@ class Parser {
                 return expr { literal { res, res.literal } };
             }
 
+            Token prev = previous();
             // consume left paren
             if (match({LEFT_PAREN})) {
                 expr inside = expression();
 
-                // make sure you consume a right paren 
-                match({RIGHT_PAREN});
+                // Verify that we have a right paren, else add and error + synchronize
+                Token prev = previous();
+                std::string msg =  std::format("ParseError: Expected a ')' at line {}", prev.line);
+                consume(RIGHT_PAREN, msg);
                 return expr { grouping { std::make_unique<expr>(std::move(inside)) } };
             }
+
+            // not valid syntax, return something but synchronize and add error message
+            std::string msg = std::format("ParseError: Expected a int/bool on line {}", prev.line);
+            errors.push_back(msg);
+            throw(ParseError());
+            
         }
 
     public: 
 
         explicit Parser(std::vector<Token> tokens) {
             this->tokens = std::move(tokens);
+        }
+
+        std::vector<expr> parse() {
+            std::vector<expr> ast_nodes;
+
+            while (!isAtEnd()) {
+                try {
+                    ast_nodes.push_back(expression());
+                } catch (const ParseError& error) {
+                    // Panic mode caught the error, synchronize and try parsing the next line
+                    synchronize();
+                }
+            }
+
+            if (!errors.empty()) {
+                std::string final_error_message = "File contained syntax errors:\n";
+                for (const std::string& err : errors) {
+                    final_error_message += err + "\n";
+                }
+                
+                throw std::runtime_error(final_error_message);
+            }
+
+            return ast_nodes;
         }
 };
