@@ -3,6 +3,7 @@
 // Declarations of test functions from other files
 void run_lexer_tests();
 void run_ast_printer_tests();
+void run_parser_tests();
 
 int main() {
     std::cout << "=======================================\n";
@@ -13,6 +14,9 @@ int main() {
     std::cout << "\n";
     
     run_ast_printer_tests();
+    std::cout << "\n";
+
+    run_parser_tests();
     std::cout << "\n";
 
     std::cout << "=======================================\n";
