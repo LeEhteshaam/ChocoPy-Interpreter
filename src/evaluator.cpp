@@ -1,21 +1,26 @@
 #include "parser.hpp"
 #include <variant>
+#include <stdexcept>
+#include <format>
+#include <string>
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 using Value = std::variant<std::string, int, bool, std::monostate>;
 
+Value evalUnary(const unary& u);
+Value evalBinary(const binary& b);
+
 Value eval(struct expr expression) {
     // match base on variant type 
-    std::visit(overloaded {
+    return std::visit(overloaded {
         [] (const literal& l) { return l.val; }, 
         [] (const unary& u) { return evalUnary(u); }, 
         [] (const grouping& g) { return eval(*g.expression); },
         [] (const binary& b) { return evalBinary(b); }
-    }
-    , expression.node)
-};
+    }, expression.node);
+}
 
 bool isTruthy(const Value& val) {
     return std::visit(overloaded{
@@ -29,15 +34,16 @@ bool isTruthy(const Value& val) {
 Value evalUnary(const unary& u) {
     Value right = eval(*u.right);
     TokenType opType = u.op.type;
+    int line = u.op.line;
 
     if (opType == NOT) {
         return (!isTruthy(right));
     } else {
         return std::visit(overloaded{
-            [](bool b)             { return b * -1; },
-            [](int n)           { return n * -1; },
-            [](std::monostate)     { return std::monostate{}; }, // log error: invalid type for -
-            [](const std::string& s) { return std::monostate{}; } // log error: invalid type for - 
+            [](bool b) -> Value    { return b * -1; },
+            [](int n) -> Value     { return n * -1; },
+            [line](std::monostate) -> Value { throw std::runtime_error(std::format("RuntimeError: bad operand type for unary -: 'NoneType' on line {}", line)); }, 
+            [line](const std::string& s) -> Value { throw std::runtime_error(std::format("RuntimeError: bad operand type for unary -: 'str' on line {}", line)); } 
         }, right);
     }
 }
@@ -45,6 +51,7 @@ Value evalUnary(const unary& u) {
 Value evalBinary(const binary& b) {
     TokenType opType = b.op.type;
     Value left_val = eval(*b.left);
+    int line = b.op.line;
 
     if (opType == AND) {
         if (!isTruthy(left_val)) return left_val;
@@ -61,18 +68,16 @@ Value evalBinary(const binary& b) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l + r; },
             [](const std::string& l, const std::string& r) -> Value { return l + r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for ADD
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for + on line {}", line));
             }
         }, left_val, right_val);
 
     } else if (opType == MINUS) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l - r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for MINUS
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for - on line {}", line));
             }
         }, left_val, right_val);
 
@@ -84,24 +89,21 @@ Value evalBinary(const binary& b) {
                 for (int i = 0; i < r; ++i) res += l;
                 return res;
             },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for MULTIPLY
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for * on line {}", line));
             }
         }, left_val, right_val);
 
     } else if (opType == INT_DIVIDE) {
         return std::visit(overloaded{
-            [](int l, int r) -> Value {
+            [line](int l, int r) -> Value {
                 if (r == 0) {
-                    // log error: division by zero
-                    return std::monostate{};
+                    throw std::runtime_error(std::format("RuntimeError: division by zero on line {}", line));
                 }
                 return l / r; 
             },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for INT_DIVIDE
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for // on line {}", line));
             }
         }, left_val, right_val);
 
@@ -115,9 +117,8 @@ Value evalBinary(const binary& b) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l > r; },
             [](const std::string& l, const std::string& r) -> Value { return l > r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for GREATER
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for > on line {}", line));
             }
         }, left_val, right_val);
 
@@ -125,9 +126,8 @@ Value evalBinary(const binary& b) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l >= r; },
             [](const std::string& l, const std::string& r) -> Value { return l >= r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for GREATER_EQUAL
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for >= on line {}", line));
             }
         }, left_val, right_val);
 
@@ -135,9 +135,8 @@ Value evalBinary(const binary& b) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l < r; },
             [](const std::string& l, const std::string& r) -> Value { return l < r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for LESS
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for < on line {}", line));
             }
         }, left_val, right_val);
 
@@ -145,13 +144,11 @@ Value evalBinary(const binary& b) {
         return std::visit(overloaded{
             [](int l, int r) -> Value { return l <= r; },
             [](const std::string& l, const std::string& r) -> Value { return l <= r; },
-            [](auto&& l, auto&& r) -> Value {
-                // log error: invalid types for LESS_EQUAL
-                return std::monostate{};
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for <= on line {}", line));
             }
         }, left_val, right_val);
     }
 
-    // Fallback for an unknown operator, return a error 
-    return std::monostate{};
+    throw std::runtime_error(std::format("RuntimeError: Invalid op type on line {}", line));
 }
