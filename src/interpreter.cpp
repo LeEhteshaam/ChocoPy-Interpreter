@@ -1,37 +1,60 @@
-#include "parser.hpp"
+#include "interpreter.hpp"
 #include <variant>
 #include <stdexcept>
 #include <format>
 #include <string>
+#include <print>
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-using Value = std::variant<std::string, int, bool, std::monostate>;
+void Interpreter::interpret(const std::vector<expr>& expressions) {
+    try {
+        for (const auto& expression : expressions) {
+            Value res = eval(expression);
+            std::print("{}\n", stringify(res));
+        }
+    } catch (const std::runtime_error& error) {
+        std::print(stderr, "{}\n", error.what());
+    }
+}
 
-Value evalUnary(const unary& u);
-Value evalBinary(const binary& b);
+std::string Interpreter::stringify(const Value& val) {
+    return std::visit(overloaded{
+        [](std::monostate) -> std::string { return "None"; },
+        [](bool b) -> std::string { return b ? "True" : "False"; },
+        [](int n) -> std::string { return std::to_string(n); },
+        [](const std::string& s) -> std::string { return s; }
+    }, val);
+}
 
-Value eval(struct expr expression) {
-    // match base on variant type 
+Value Interpreter::eval(const expr& expression) {
+    // match based on variant type 
     return std::visit(overloaded {
-        [] (const literal& l) { return l.val; }, 
-        [] (const unary& u) { return evalUnary(u); }, 
-        [] (const grouping& g) { return eval(*g.expression); },
-        [] (const binary& b) { return evalBinary(b); }
+        [] (const literal& l) -> Value {
+            return std::visit(overloaded{
+                [](int val) -> Value { return val; },
+                [](bool val) -> Value { return val; },
+                [](std::string_view val) -> Value { return std::string(val); },
+                [](std::monostate val) -> Value { return val; }
+            }, l.val);
+        }, 
+        [this] (const unary& u) -> Value { return evalUnary(u); }, 
+        [this] (const grouping& g) -> Value { return eval(*g.expression); },
+        [this] (const binary& b) -> Value { return evalBinary(b); }
     }, expression.node);
 }
 
-bool isTruthy(const Value& val) {
+bool Interpreter::isTruthy(const Value& val) {
     return std::visit(overloaded{
-        [](std::monostate)     { return false; },
-        [](bool b)             { return b; },
-        [](int n)           { return n != 0; },
+        [](std::monostate)       { return false; },
+        [](bool b)               { return b; },
+        [](int n)                { return n != 0; },
         [](const std::string& s) { return !s.empty(); }
     }, val);
 }
 
-Value evalUnary(const unary& u) {
+Value Interpreter::evalUnary(const unary& u) {
     Value right = eval(*u.right);
     TokenType opType = u.op.type;
     int line = u.op.line;
@@ -48,7 +71,7 @@ Value evalUnary(const unary& u) {
     }
 }
 
-Value evalBinary(const binary& b) {
+Value Interpreter::evalBinary(const binary& b) {
     TokenType opType = b.op.type;
     Value left_val = eval(*b.left);
     int line = b.op.line;

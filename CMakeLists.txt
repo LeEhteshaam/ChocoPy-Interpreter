@@ -10,6 +10,7 @@ add_executable(interp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ast_printer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/interpreter.cpp
 )
 
 # Build test runner
@@ -21,4 +22,5 @@ add_executable(run_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ast_printer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/interpreter.cpp
 )
