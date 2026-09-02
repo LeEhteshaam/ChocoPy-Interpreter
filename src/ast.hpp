@@ -57,6 +57,11 @@ struct ifStmt {
     std::vector<stmt> elseBranch;
 };
 
+struct whileStmt {
+    std::unique_ptr<expr> condition;
+    std::vector<stmt> body;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt>node;
 };

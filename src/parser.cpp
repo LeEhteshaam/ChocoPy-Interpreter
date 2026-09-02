@@ -96,6 +96,10 @@ struct stmt Parser::statement() {
         return ifStatement();
     }
 
+    if (match({WHILE})) {
+        return whileStatement();
+    }
+
     if (match({PRINT})) {
         return printStatement();
     } 
@@ -122,6 +126,17 @@ std::vector<stmt> Parser::block() {
     consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
 
     return res;
+}
+
+struct stmt Parser::whileStatement() {
+    expr loopCondition = expression();
+    consume(COLON, std::format("ParseError: Expected ':' after while condition on line {}", previous().line));    
+    std::vector<stmt> loopBody = block();
+
+    return stmt { whileStmt {
+        std::make_unique<expr>(std::move(loopCondition)),
+        std::move(loopBody)
+    }};
 }
 
 struct stmt Parser::ifStatement() {

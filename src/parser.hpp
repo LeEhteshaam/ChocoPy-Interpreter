@@ -38,6 +38,7 @@ private:
     struct stmt varDeclaration();
     struct stmt assignStatement();
     struct stmt ifStatement();
+    struct stmt whileStatement();
     std::vector<stmt> block();
     struct expr expression();
     struct expr equality();

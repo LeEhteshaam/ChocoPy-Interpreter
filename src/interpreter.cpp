@@ -33,7 +33,13 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     } else {
                         interpret(f.elseBranch);
                     }
+                },
+                [this](const whileStmt& w) {
+                    while (isTruthy(eval(*w.condition))) {
+                        interpret(w.body);
+                    }
                 }
+
             }, statement.node);
         }
     } catch (const std::runtime_error& error) {
