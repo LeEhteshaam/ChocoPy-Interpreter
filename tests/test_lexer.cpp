@@ -336,6 +336,51 @@ void test_tokenizer_single_slash() {
     std::cout << "  test_tokenizer_single_slash passed!\n";
 }
 
+void test_tokenizer_arrow() {
+    // Arrow in function return type annotation
+    {
+        std::string_view code = "def foo() -> int:\n    pass\n";
+        std::vector<Token> tokens = tokenizer(code);
+        assert(tokens.size() == 13);
+        assert(tokens[0].type == DEF);
+        assert(tokens[1].type == IDENTIFIER && tokens[1].lexeme == "foo");
+        assert(tokens[2].type == LEFT_PAREN);
+        assert(tokens[3].type == RIGHT_PAREN);
+        assert(tokens[4].type == ARROW && tokens[4].lexeme == "->");
+        assert(tokens[5].type == INT_TYPE && tokens[5].lexeme == "int");
+        assert(tokens[6].type == COLON);
+        assert(tokens[7].type == NEW_LINE);
+        assert(tokens[8].type == INDENT);
+        assert(tokens[9].type == PASS);
+        assert(tokens[10].type == NEW_LINE);
+        assert(tokens[11].type == DEDENT);
+        assert(tokens[12].type == END_OF_FILE);
+    }
+
+    // Minus followed by something other than '>'
+    {
+        std::string_view code = "x - 5\n";
+        std::vector<Token> tokens = tokenizer(code);
+        assert(tokens.size() == 5);
+        assert(tokens[0].type == IDENTIFIER && tokens[0].lexeme == "x");
+        assert(tokens[1].type == MINUS && tokens[1].lexeme == "-");
+        assert(tokens[2].type == INT && std::get<int>(tokens[2].literal) == 5);
+        assert(tokens[3].type == NEW_LINE);
+        assert(tokens[4].type == END_OF_FILE);
+    }
+
+    // Trailing minus at EOF
+    {
+        std::string_view code = "-";
+        std::vector<Token> tokens = tokenizer(code);
+        assert(tokens.size() == 2);
+        assert(tokens[0].type == MINUS && tokens[0].lexeme == "-");
+        assert(tokens[1].type == END_OF_FILE);
+    }
+
+    std::cout << "  test_tokenizer_arrow passed!\n";
+}
+
 void run_lexer_tests() {
     std::cout << "Running MakeToken unit tests...\n";
     test_make_token_map();
@@ -343,6 +388,7 @@ void run_lexer_tests() {
 
     std::cout << "Running Tokenizer unit tests...\n";
     test_tokenizer_var_def();
+    test_tokenizer_arrow();
     test_tokenizer_simple_expr();
     test_tokenizer_nested_indentation();
     test_tokenizer_comments_and_blanks();

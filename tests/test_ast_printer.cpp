@@ -35,6 +35,10 @@ expr make_binary(expr left, Token op, expr right) {
     }};
 }
 
+expr make_var_expr(std::string_view name) {
+    return expr{varExpr{Token{IDENTIFIER, 1, 1, name, name.length(), std::monostate{}}}};
+}
+
 expr make_grouping(expr expression) {
     return expr{grouping{std::make_unique<expr>(std::move(expression))}};
 }
@@ -86,6 +90,38 @@ void test_literal_exprs() {
     std::cout << "  test_literal_exprs passed!\n";
 }
 
+void test_var_exprs() {
+    // Identifier "x"
+    {
+        expr e = make_var_expr("x");
+        std::string out = capture_ast_output(e);
+        assert(out == "x");
+    }
+
+    // Binary with variables: x + y
+    {
+        Token op{ADD, 1, 3, "+", 1, std::monostate{}};
+        expr e = make_binary(make_var_expr("x"), op, make_var_expr("y"));
+        std::string out = capture_ast_output(e);
+        assert(out == "x + y");
+    }
+
+    // Complex: (x + 1) * y
+    {
+        Token op_plus{ADD, 1, 3, "+", 1, std::monostate{}};
+        expr inner = make_binary(make_var_expr("x"), op_plus, make_literal_int(1));
+        expr group = make_grouping(std::move(inner));
+
+        Token op_mul{MULTIPLY, 1, 9, "*", 1, std::monostate{}};
+        expr complex = make_binary(std::move(group), op_mul, make_var_expr("y"));
+
+        std::string out = capture_ast_output(complex);
+        assert(out == "(x + 1) * y");
+    }
+
+    std::cout << "  test_var_exprs passed!\n";
+}
+
 void test_unary_exprs() {
     // -42
     {
@@ -118,7 +154,7 @@ void test_binary_exprs() {
     // x == None
     {
         Token op{EQUAL, 1, 3, "==", 2, std::monostate{}};
-        expr var{literal{Token{IDENTIFIER, 1, 1, "x", 1, "x"}, "x"}};
+        expr var = make_var_expr("x");
         expr e = make_binary(std::move(var), op, make_literal_none());
         std::string out = capture_ast_output(e);
         assert(out == "x == null");
@@ -161,6 +197,7 @@ void test_complex_exprs() {
 void run_ast_printer_tests() {
     std::cout << "Running AST Printer unit tests...\n";
     test_literal_exprs();
+    test_var_exprs();
     test_unary_exprs();
     test_binary_exprs();
     test_grouping_exprs();
