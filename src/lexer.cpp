@@ -13,8 +13,9 @@ The Lexer takes in a sequence of chars and makes tokens.
 // Check if the lexeme is a keyword, delimiter, line structure or operator 
 std::unordered_map<std::string_view, TokenType> tokenMap {
     {"\n", NEW_LINE},
-    {"str", IDENTIFIER},
-    {"int", IDENTIFIER},
+    {"str", STR_TYPE},
+    {"int", INT_TYPE},
+    {"bool", BOOL_TYPE},
     {"+", ADD},
     {"-", MINUS},
     {"//", INT_DIVIDE},
@@ -150,9 +151,17 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
         }
 
         case '+': case '*': case '%': case ')': case '(': 
-        case '-': case ',': case '.': case ':': case ']':
+        case ',': case '.': case ':': case ']':
         case '[':
             counter += 1;
+            return makeToken(buffer, cur, counter, column, *line);
+
+        case '-':
+            if (start + 1 < buffer.size() && buffer[start + 1] == '>') {
+                counter += 2;
+            } else {
+                counter += 1;
+            }
             return makeToken(buffer, cur, counter, column, *line);
 
         case '=': case '!': case '>': case '<':
@@ -212,6 +221,7 @@ struct Token nextToken(std::string_view buffer, int* cur, int* line, int* column
                 char curChar = buffer[start + counter];
                 
                 if (curChar == '"') {
+                    counter += 1;
                     break;
                 }
 
