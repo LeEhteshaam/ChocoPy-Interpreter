@@ -18,5 +18,5 @@ private:
     bool isTruthy(const Value& val);
 
 public:
-    void interpret(const std::vector<expr>& expressions, std::ostream& out = std::cout, std::ostream& err = std::cerr);
+    void interpret(const std::vector<stmt>& statements, std::ostream& out = std::cout, std::ostream& err = std::cerr);
 };

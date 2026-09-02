@@ -31,6 +31,9 @@ private:
     Token consume(TokenType type, std::string message);
 
     // Methods for parsing
+    struct stmt statement();
+    struct stmt printStatement();
+    struct stmt expressionStatement();
     struct expr expression();
     struct expr equality();
     struct expr comparison();
@@ -41,5 +44,5 @@ private:
 
 public: 
     explicit Parser(std::vector<Token> tokens);
-    std::vector<expr> parse();
+    std::vector<stmt> parse();
 };

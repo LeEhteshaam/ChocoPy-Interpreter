@@ -8,11 +8,17 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-void Interpreter::interpret(const std::vector<expr>& expressions, std::ostream& out, std::ostream& err) {
+void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& out, std::ostream& err) {
     try {
-        for (const auto& expression : expressions) {
-            Value res = eval(expression);
-            out << stringify(res) << "\n";
+        for (const auto& statement : statements) {
+            std::visit(overloaded {
+                [this](const exprStmt& e) { 
+                    eval(*e.expression); 
+                },
+                [this, &out](const printStmt& p) { 
+                    out << stringify(eval(*p.expression)) << "\n"; 
+                }
+            }, statement.node);
         }
     } catch (const std::runtime_error& error) {
         err << error.what() << "\n";

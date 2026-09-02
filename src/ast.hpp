@@ -28,3 +28,14 @@ struct grouping {
 struct expr {
     std::variant<literal, unary, binary, grouping> node;
 };
+
+struct exprStmt {
+    std::unique_ptr<struct expr> expression;
+};
+struct printStmt {  
+    std::unique_ptr<struct expr> expression;
+};
+
+struct stmt {
+    std::variant<exprStmt, printStmt> node;
+};

@@ -75,6 +75,30 @@ Token Parser::consume(TokenType type, std::string message) {
     throw ParseError();
 }
 
+struct stmt Parser::statement() {
+    if (match({PRINT})) {
+        return printStatement();
+    }
+
+    return expressionStatement();
+}
+
+struct stmt Parser::printStatement() {
+    Token prev = previous();
+    expr val = expression();
+    std::string msg = std::format("ParseError: Expected a newline on line {}", prev.line);
+    consume(NEW_LINE, msg);
+    return stmt { printStmt { std::make_unique<expr>(std::move(val)) } };
+}
+
+struct stmt Parser::expressionStatement() {
+    Token prev = previous();
+    expr val = expression();
+    std::string msg = std::format("ParseError: Expected a newline on line {}", prev.line);
+    consume(NEW_LINE, msg);
+    return stmt { exprStmt { std::make_unique<expr>(std::move(val)) } };
+}
+
 struct expr Parser::expression() {
     return equality();
 }
@@ -192,12 +216,12 @@ struct expr Parser::primary() {
     throw ParseError();
 }
 
-std::vector<expr> Parser::parse() {
-    std::vector<expr> ast_nodes;
+std::vector<stmt> Parser::parse() {
+    std::vector<stmt> ast_nodes;
 
     while (!isAtEnd()) {
         try {
-            ast_nodes.push_back(expression());
+            ast_nodes.push_back(statement());
         } catch (const ParseError& error) {
             // Panic mode caught the error, synchronize and try parsing the next line
             synchronize();
