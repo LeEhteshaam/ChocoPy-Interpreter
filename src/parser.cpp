@@ -92,11 +92,56 @@ struct stmt Parser::statement() {
         return assignStatement();
     }
 
+    if (match({IF})) {
+        return ifStatement();
+    }
+
     if (match({PRINT})) {
         return printStatement();
     } 
 
     return expressionStatement();
+}
+
+std::vector<stmt> Parser::block() {
+    std::vector<stmt> res;
+    Token prev = previous();
+
+    consume(NEW_LINE, std::format("ParseError: Expected newline before block on line {}", previous().line));
+    consume(INDENT, std::format("ParseError: Expected an indented block on line {}", previous().line));
+
+    while(!isAtEnd() && !check(DEDENT)) {
+
+        if (check(IDENTIFIER) && peekNext().type == COLON) {
+            throw std::runtime_error(std::format("ParseError: Variable declarations are not allowed inside blocks on line {}", peek().line));
+        }
+
+        res.push_back(statement());
+    }
+
+    consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
+
+    return res;
+}
+
+struct stmt Parser::ifStatement() {
+    expr branchCondition = expression();
+    consume(COLON, std::format("ParseError: Expected ':' after if condition on line {}", previous().line));
+    std::vector<stmt> ifBranch = block();
+    std::vector<stmt> elseBranch;
+
+    if (match({ELIF})) {
+        elseBranch = { ifStatement() };
+    } else if (match{ELSE}) {
+        consume(COLON, std::format("ParseError: Expected ':' after else on line {}", previous().line));
+        elseBranch = block();
+    }
+
+    return stmt { ifStmt {
+        std::make_unqiue(std::move(branchCondition));
+        std::move(ifBranch),
+        std::move(elseBranch)
+    }};
 }
 
 struct stmt Parser::varDeclaration() {

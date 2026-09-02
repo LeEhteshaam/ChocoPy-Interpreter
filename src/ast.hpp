@@ -51,6 +51,12 @@ struct assignStmt {
     std::unique_ptr<struct expr> value;
 };
 
+struct ifStmt {
+    std::unique_ptr<expr> condition;
+    std::vector<stmt> ifBranch;
+    std::vector<stmt> elseBranch;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt> node;
 };

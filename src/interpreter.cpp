@@ -25,6 +25,14 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                 [this](const assignStmt& a) {
                     Value result = eval(*a.value);
                     env.assign(a.name, result);
+                },
+                [this](const ifStmt& f) {
+                    Value branchCondition = eval(*f.condition);
+                    if (isTruthy(branchCondition)) {
+                        interpret(f.ifBranch);
+                    } else {
+                        interpret(f.elseBranch);
+                    }
                 }
             }, statement.node);
         }
