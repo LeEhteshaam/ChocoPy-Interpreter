@@ -21,6 +21,7 @@ private:
     // Helper functions for traversing token stream
     Token previous();
     Token peek();
+    Token peekNext();
     bool isAtEnd();
     Token advance();
     bool check(TokenType type);
@@ -34,6 +35,8 @@ private:
     struct stmt statement();
     struct stmt printStatement();
     struct stmt expressionStatement();
+    struct stmt varDeclaration();
+    struct stmt assignStatement();
     struct expr expression();
     struct expr equality();
     struct expr comparison();

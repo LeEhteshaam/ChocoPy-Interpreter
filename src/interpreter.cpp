@@ -17,6 +17,14 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                 },
                 [this, &out](const printStmt& p) { 
                     out << stringify(eval(*p.expression)) << "\n"; 
+                },
+                [this](const varDecl& v) {
+                    Value result = eval(*v.expression);
+                    env.define(v.identifier, v.type, result);
+                },
+                [this](const assignStmt& a) {
+                    Value result = eval(*a.value);
+                    env.assign(a.name, result);
                 }
             }, statement.node);
         }
@@ -45,6 +53,7 @@ Value Interpreter::eval(const expr& expression) {
                 [](std::monostate val) -> Value { return val; }
             }, l.val);
         }, 
+        [this] (const varExpr& v) -> Value { return env.get(v.name); },
         [this] (const unary& u) -> Value { return evalUnary(u); }, 
         [this] (const grouping& g) -> Value { return eval(*g.expression); },
         [this] (const binary& b) -> Value { return evalBinary(b); }

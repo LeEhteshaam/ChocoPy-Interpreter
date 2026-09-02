@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include "environment.hpp"
 #include <variant>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@ using Value = std::variant<std::string, int, bool, std::monostate>;
 
 class Interpreter {
 private:
+    Environment env;
     std::string stringify(const Value& val);
     Value eval(const expr& expression);
     Value evalUnary(const unary& u);

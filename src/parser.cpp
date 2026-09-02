@@ -16,6 +16,13 @@ Token Parser::peek() {
     return tokens[counter];
 }
 
+Token Parser::peekNext() {
+    if (counter + 1 >= tokens.size()) {
+        return tokens.back(); 
+    }
+    return tokens[counter + 1];
+}
+
 bool Parser::isAtEnd() {
     Token cur = peek();
     return cur.type == END_OF_FILE;
@@ -76,18 +83,66 @@ Token Parser::consume(TokenType type, std::string message) {
 }
 
 struct stmt Parser::statement() {
-    if (match({PRINT})) {
-        return printStatement();
+
+    if (check(IDENTIFIER) && peekNext().type == COLON) {
+        return varDeclaration();
+    }
+    
+    if (check(IDENTIFIER) && peekNext().type == ASSIGN) {
+        return assignStatement();
     }
 
+    if (match({PRINT})) {
+        return printStatement();
+    } 
+
     return expressionStatement();
+}
+
+struct stmt Parser::varDeclaration() {
+    Token name = consume(IDENTIFIER, std::format("ParseError: Expected variable name on line {}", peek().line));
+    consume(COLON, std::format("ParseError: Expected ':' after '{}' on line {}", name.lexeme, name.line));
+
+    if (!match({INT_TYPE, STR_TYPE, BOOL_TYPE})) {
+        std::string msg = std::format("ParseError: Expected type 'int', 'str', or 'bool' on line {}", peek().line);
+        errors.push_back(msg);
+        throw ParseError();
+    }
+    Token idType = previous();
+    consume(ASSIGN, std::format("ParseError: Expected '=' on line {}", name.line));
+    expr val = expression();
+
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", name.line));
+    }
+
+    return stmt { varDecl { 
+        idType.type, 
+        name,
+        std::make_unique<expr>(std::move(val))
+    }};
+}
+
+struct stmt Parser::assignStatement() {
+    Token name = consume(IDENTIFIER, "ParseError: Expected variable name");
+    consume(ASSIGN, "ParseError: Expected '=' after variable name on line {}", name.line);
+    
+    expr val = expression();
+    
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", previous().line));
+    }
+    
+    return stmt { assignStmt { name, std::make_unique<expr>(std::move(val)) } };
 }
 
 struct stmt Parser::printStatement() {
     Token prev = previous();
     expr val = expression();
     std::string msg = std::format("ParseError: Expected a newline on line {}", prev.line);
-    consume(NEW_LINE, msg);
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", prev.line));
+    }   
     return stmt { printStmt { std::make_unique<expr>(std::move(val)) } };
 }
 
@@ -95,7 +150,9 @@ struct stmt Parser::expressionStatement() {
     Token prev = previous();
     expr val = expression();
     std::string msg = std::format("ParseError: Expected a newline on line {}", prev.line);
-    consume(NEW_LINE, msg);
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", prev.line));
+    }
     return stmt { exprStmt { std::make_unique<expr>(std::move(val)) } };
 }
 
@@ -191,6 +248,9 @@ struct expr Parser::primary() {
     if (match({FALSE})) return expr { literal { previous(), false } };
     if (match({TRUE})) return expr { literal { previous(), true } }; 
     if (match({NONE})) return expr { literal { previous(), std::monostate{} } };
+    if (match({IDENTIFIER})) {
+        return expr { varExpr { previous() } };
+    }
     if (match({INT, STR})) {
         Token res = previous();
         return std::visit([&res](auto&& v) -> expr {

@@ -10,6 +10,10 @@ struct literal {
     std::variant<int, bool, std::string_view, std::monostate> val;
 };
 
+struct varExpr {
+    Token name;
+};
+
 struct unary {
     Token op;
     std::unique_ptr<expr> right;
@@ -26,7 +30,7 @@ struct grouping {
 };
 
 struct expr {
-    std::variant<literal, unary, binary, grouping> node;
+    std::variant<literal, varExpr, unary, binary, grouping> node;
 };
 
 struct exprStmt {
@@ -36,6 +40,17 @@ struct printStmt {
     std::unique_ptr<struct expr> expression;
 };
 
+struct varDecl {
+    TokenType type;
+    Token identifier;
+    std::unique_ptr<struct expr> expression;
+}
+
+struct assignStmt {
+    Token name;
+    std::unique_ptr<struct expr> value;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt> node;
+    std::variant<exprStmt, printStmt, varDecl> node;
 };
