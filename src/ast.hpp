@@ -44,7 +44,7 @@ struct varDecl {
     TokenType type;
     Token identifier;
     std::unique_ptr<struct expr> expression;
-}
+};
 
 struct assignStmt {
     Token name;
@@ -52,5 +52,5 @@ struct assignStmt {
 };
 
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt> node;
 };

@@ -125,7 +125,7 @@ struct stmt Parser::varDeclaration() {
 
 struct stmt Parser::assignStatement() {
     Token name = consume(IDENTIFIER, "ParseError: Expected variable name");
-    consume(ASSIGN, "ParseError: Expected '=' after variable name on line {}", name.line);
+    consume(ASSIGN, std::format("ParseError: Expected '=' after variable name on line {}", name.line));
     
     expr val = expression();
     

@@ -8,7 +8,7 @@ TokenType Environment::getTypeOfValue(const Value& val) {
         [](int) -> TokenType { return INT_TYPE; },
         [](const std::string&) -> TokenType { return STR_TYPE; },
         [](bool) -> TokenType { return BOOL_TYPE; },
-        [](std::monostate) -> TokenType { return NONE; } /
+        [](std::monostate) -> TokenType { return NONE; }
     }, val);
 }
 

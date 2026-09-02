@@ -16,6 +16,10 @@ void printAST(const expr& expression, std::ostream& out) {
             }, l.val);
         },
 
+        [&out] (const varExpr& v) {
+            std::print(out, "{}", v.name.lexeme);
+        },
+
         [&out] (const binary& b) {
             printAST(*b.left, out);
             std::string_view op = b.op.lexeme;
