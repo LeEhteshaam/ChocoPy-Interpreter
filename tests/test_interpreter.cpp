@@ -1,4 +1,6 @@
 #include "../src/interpreter.hpp"
+#include "../src/environment.hpp"
+#include "../src/parser.hpp"
 #include "../src/ast.hpp"
 #include "../src/lexer.hpp"
 #include <cassert>
@@ -10,6 +12,24 @@
 #include <memory>
 #include <variant>
 
+// --- Statement and AST Node Construction Helpers ---
+
+static stmt make_print_stmt(expr expression) {
+    return stmt{printStmt{std::make_unique<expr>(std::move(expression))}};
+}
+
+static stmt make_expr_stmt(expr expression) {
+    return stmt{exprStmt{std::make_unique<expr>(std::move(expression))}};
+}
+
+static stmt make_var_decl(TokenType type, Token identifier, expr value) {
+    return stmt{varDecl{type, identifier, std::make_unique<expr>(std::move(value))}};
+}
+
+static stmt make_assign(Token name, expr value) {
+    return stmt{assignStmt{name, std::make_unique<expr>(std::move(value))}};
+}
+
 // --- Stream Output Capture Helpers ---
 
 struct CapturedOutput {
@@ -17,18 +37,26 @@ struct CapturedOutput {
     std::string err;
 };
 
-static CapturedOutput capture_interpret(const std::vector<expr>& expressions) {
+static CapturedOutput capture_interpret(const std::vector<stmt>& statements) {
     std::ostringstream out;
     std::ostringstream err;
     Interpreter interp;
-    interp.interpret(expressions, out, err);
+    interp.interpret(statements, out, err);
     return {out.str(), err.str()};
 }
 
+static CapturedOutput capture_interpret(std::vector<expr>& expressions) {
+    std::vector<stmt> stmts;
+    for (auto& e : expressions) {
+        stmts.push_back(make_print_stmt(std::move(e)));
+    }
+    return capture_interpret(stmts);
+}
+
 static CapturedOutput capture_interpret(expr expression) {
-    std::vector<expr> exprs;
-    exprs.push_back(std::move(expression));
-    return capture_interpret(exprs);
+    std::vector<stmt> stmts;
+    stmts.push_back(make_print_stmt(std::move(expression)));
+    return capture_interpret(stmts);
 }
 
 // --- AST Node Construction Helpers ---
@@ -65,8 +93,16 @@ static expr make_grouping(expr expression) {
     return expr{grouping{std::make_unique<expr>(std::move(expression))}};
 }
 
+static expr make_var_expr(std::string_view name, int line = 1, int col = 1) {
+    return expr{varExpr{Token{IDENTIFIER, line, col, name, name.length(), std::monostate{}}}};
+}
+
 static Token make_op(TokenType type, std::string_view lexeme = "", int line = 1, int col = 1) {
     return Token{type, line, col, lexeme, lexeme.length(), std::monostate{}};
+}
+
+static Token make_token(TokenType type, std::string_view lexeme = "", int line = 1, int col = 1, std::variant<int, std::string_view, std::monostate> literal = std::monostate{}) {
+    return Token{type, line, col, lexeme, lexeme.length(), literal};
 }
 
 // --- Primary Literals Unit Tests ---
@@ -1259,6 +1295,428 @@ void test_interpreter_multiple_expressions_and_halt_on_error() {
     std::cout << "  test_interpreter_multiple_expressions_and_halt_on_error passed!\n";
 }
 
+// --- Environment Unit Tests (Testing all branches of define, assign, get, getTypeOfValue) ---
+
+void test_interpreter_environment_unit() {
+    Environment env;
+
+    // Define success: int, str, bool
+    Token tok_x{IDENTIFIER, 1, 1, "x", 1, std::monostate{}};
+    env.define(tok_x, INT_TYPE, Value(10));
+    assert(std::get<int>(env.get(tok_x)) == 10);
+
+    Token tok_s{IDENTIFIER, 1, 1, "s", 1, std::monostate{}};
+    env.define(tok_s, STR_TYPE, Value(std::string("hello")));
+    assert(std::get<std::string>(env.get(tok_s)) == "hello");
+
+    Token tok_b{IDENTIFIER, 1, 1, "b", 1, std::monostate{}};
+    env.define(tok_b, BOOL_TYPE, Value(true));
+    assert(std::get<bool>(env.get(tok_b)) == true);
+
+    // Error: Redefining already defined variable
+    {
+        bool caught = false;
+        try {
+            env.define(tok_x, INT_TYPE, Value(20));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("already defined on line 1") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Type mismatch on definition (INT_TYPE with string)
+    {
+        Token tok_y{IDENTIFIER, 2, 1, "y", 1, std::monostate{}};
+        bool caught = false;
+        try {
+            env.define(tok_y, INT_TYPE, Value(std::string("not an int")));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Type mismatch on line 2") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Type mismatch on definition (STR_TYPE with int)
+    {
+        Token tok_y{IDENTIFIER, 3, 1, "y", 1, std::monostate{}};
+        bool caught = false;
+        try {
+            env.define(tok_y, STR_TYPE, Value(123));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Type mismatch on line 3") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Type mismatch on definition (BOOL_TYPE with monostate)
+    {
+        Token tok_y{IDENTIFIER, 4, 1, "y", 1, std::monostate{}};
+        bool caught = false;
+        try {
+            env.define(tok_y, BOOL_TYPE, Value(std::monostate{}));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Type mismatch on line 4") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Assign success: same types
+    env.assign(tok_x, Value(42));
+    assert(std::get<int>(env.get(tok_x)) == 42);
+
+    env.assign(tok_s, Value(std::string("world")));
+    assert(std::get<std::string>(env.get(tok_s)) == "world");
+
+    env.assign(tok_b, Value(false));
+    assert(std::get<bool>(env.get(tok_b)) == false);
+
+    // Error: Assign to undefined variable
+    {
+        Token tok_unknown{IDENTIFIER, 5, 1, "unknown", 7, std::monostate{}};
+        bool caught = false;
+        try {
+            env.assign(tok_unknown, Value(100));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Undefined variable 'unknown' on line 5") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Type mismatch on reassignment (int to string)
+    {
+        bool caught = false;
+        try {
+            env.assign(tok_x, Value(std::string("string for int")));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Type mismatch on reassignment to 'x' on line 1") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Type mismatch on reassignment (string to bool)
+    {
+        bool caught = false;
+        try {
+            env.assign(tok_s, Value(true));
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Type mismatch on reassignment to 's' on line 1") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    // Error: Get undefined variable
+    {
+        Token tok_unknown{IDENTIFIER, 6, 1, "unknown_var", 11, std::monostate{}};
+        bool caught = false;
+        try {
+            env.get(tok_unknown);
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Undefined variable 'unknown_var' on line 6") != std::string::npos);
+        }
+        assert(caught);
+    }
+
+    std::cout << "  test_interpreter_environment_unit passed!\n";
+}
+
+// --- Variable Declaration and Assignment Statements via Interpreter ---
+
+void test_interpreter_var_decl_and_assign_stmts() {
+    // Variable declaration and reading via varExpr in print
+    {
+        std::vector<stmt> stmts;
+        Token tok_x = make_token(IDENTIFIER, "x", 1, 1);
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x, make_literal_int(42)));
+        stmts.push_back(make_print_stmt(make_var_expr("x")));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "42\n");
+        assert(res.err.empty());
+    }
+
+    // Variable declaration, reassignment, and arithmetic with variables
+    {
+        std::vector<stmt> stmts;
+        Token tok_x = make_token(IDENTIFIER, "x", 1, 1);
+        Token tok_y = make_token(IDENTIFIER, "y", 2, 1);
+
+        // x: int = 10
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x, make_literal_int(10)));
+        // y: int = 20
+        stmts.push_back(make_var_decl(INT_TYPE, tok_y, make_literal_int(20)));
+        // x = x + y * 2  (10 + 40 = 50)
+        expr mult = make_binary(make_var_expr("y"), make_op(MULTIPLY, "*"), make_literal_int(2));
+        expr add = make_binary(make_var_expr("x"), make_op(ADD, "+"), std::move(mult));
+        stmts.push_back(make_assign(tok_x, std::move(add)));
+        // print x
+        stmts.push_back(make_print_stmt(make_var_expr("x")));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "50\n");
+        assert(res.err.empty());
+    }
+
+    // String variables and concatenation
+    {
+        std::vector<stmt> stmts;
+        Token tok_s1 = make_token(IDENTIFIER, "s1", 1, 1);
+        Token tok_s2 = make_token(IDENTIFIER, "s2", 2, 1);
+        Token tok_s3 = make_token(IDENTIFIER, "s3", 3, 1);
+
+        // s1: str = "foo"
+        stmts.push_back(make_var_decl(STR_TYPE, tok_s1, make_literal_str("foo")));
+        // s2: str = "bar"
+        stmts.push_back(make_var_decl(STR_TYPE, tok_s2, make_literal_str("bar")));
+        // s3: str = s1 + s2
+        expr add = make_binary(make_var_expr("s1"), make_op(ADD, "+"), make_var_expr("s2"));
+        stmts.push_back(make_var_decl(STR_TYPE, tok_s3, std::move(add)));
+        // print s3
+        stmts.push_back(make_print_stmt(make_var_expr("s3")));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "foobar\n");
+        assert(res.err.empty());
+    }
+
+    // Boolean variables and logic
+    {
+        std::vector<stmt> stmts;
+        Token tok_b = make_token(IDENTIFIER, "b", 1, 1);
+
+        // b: bool = True
+        stmts.push_back(make_var_decl(BOOL_TYPE, tok_b, make_literal_bool(true)));
+        // print b
+        stmts.push_back(make_print_stmt(make_var_expr("b")));
+        // b = not b
+        stmts.push_back(make_assign(tok_b, make_unary(make_op(NOT, "not "), make_var_expr("b"))));
+        // print b
+        stmts.push_back(make_print_stmt(make_var_expr("b")));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "True\nFalse\n");
+        assert(res.err.empty());
+    }
+
+    std::cout << "  test_interpreter_var_decl_and_assign_stmts passed!\n";
+}
+
+// --- Expression Statements via Interpreter ---
+
+void test_interpreter_expression_statement() {
+    // Expression statement executes without printing
+    {
+        std::vector<stmt> stmts;
+        Token tok_x = make_token(IDENTIFIER, "x", 1, 1);
+        // x: int = 100
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x, make_literal_int(100)));
+        // x + 50 (exprStmt, does not modify x and does not print)
+        stmts.push_back(make_expr_stmt(make_binary(make_var_expr("x"), make_op(ADD, "+"), make_literal_int(50))));
+        // print x
+        stmts.push_back(make_print_stmt(make_var_expr("x")));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "100\n");
+        assert(res.err.empty());
+    }
+
+    // Expression statement with runtime error halts execution and reports to err
+    {
+        std::vector<stmt> stmts;
+        // 10 // 0 (exprStmt)
+        stmts.push_back(make_expr_stmt(make_binary(make_literal_int(10), make_op(INT_DIVIDE, "//", 1), make_literal_int(0))));
+        // print 42 (should not execute)
+        stmts.push_back(make_print_stmt(make_literal_int(42)));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: division by zero on line 1\n");
+    }
+
+    std::cout << "  test_interpreter_expression_statement passed!\n";
+}
+
+// --- Runtime Error Handling in Statements ---
+
+void test_interpreter_runtime_errors() {
+    // Undefined variable in varExpr
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_print_stmt(make_var_expr("unknown_var", 3, 1)));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: Undefined variable 'unknown_var' on line 3\n");
+    }
+
+    // Redefining variable
+    {
+        std::vector<stmt> stmts;
+        Token tok_x1 = make_token(IDENTIFIER, "x", 1, 1);
+        Token tok_x2 = make_token(IDENTIFIER, "x", 2, 1);
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x1, make_literal_int(1)));
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x2, make_literal_int(2)));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: Variable 'x' is already defined on line 2\n");
+    }
+
+    // Type mismatch on definition
+    {
+        std::vector<stmt> stmts;
+        Token tok_x = make_token(IDENTIFIER, "x", 1, 1);
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x, make_literal_str("\"text\"", 1, 10)));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: Type mismatch on line 1\n");
+    }
+
+    // Type mismatch on reassignment
+    {
+        std::vector<stmt> stmts;
+        Token tok_x1 = make_token(IDENTIFIER, "x", 1, 1);
+        Token tok_x2 = make_token(IDENTIFIER, "x", 2, 1);
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x1, make_literal_int(10)));
+        stmts.push_back(make_assign(tok_x2, make_literal_str("\"not int\"", 2, 5)));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: Type mismatch on reassignment to 'x' on line 2\n");
+    }
+
+    // Assigning to undefined variable
+    {
+        std::vector<stmt> stmts;
+        Token tok_z = make_token(IDENTIFIER, "z", 4, 1);
+        stmts.push_back(make_assign(tok_z, make_literal_int(99)));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: Undefined variable 'z' on line 4\n");
+    }
+
+    std::cout << "  test_interpreter_runtime_errors passed!\n";
+}
+
+// --- End-to-End Program Execution Tests (Lexer -> Parser -> Interpreter) ---
+
+void test_interpreter_integration_programs() {
+    // End-to-end: Arithmetic and variable reassignment
+    {
+        std::string_view code = 
+            "x: int = 15\n"
+            "y: int = 25\n"
+            "z: int = x + y * 2\n"
+            "print z\n"
+            "z = z + 1\n"
+            "print z\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out;
+        std::ostringstream err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+
+        assert(out.str() == "65\n66\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: String assignment and comparison
+    {
+        std::string_view code = 
+            "first: str = \"hello\"\n"
+            "second: str = first\n"
+            "print second\n"
+            "print second == \"hello\"\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out;
+        std::ostringstream err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+
+        assert(out.str() == "\"hello\"\nTrue\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Boolean manipulation
+    {
+        std::string_view code = 
+            "flag: bool = True\n"
+            "print flag\n"
+            "flag = not flag\n"
+            "print flag\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out;
+        std::ostringstream err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+
+        assert(out.str() == "True\nFalse\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Expression statement followed by print
+    {
+        std::string_view code = 
+            "10 + 20\n"
+            "print 42\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out;
+        std::ostringstream err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+
+        assert(out.str() == "42\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Multiple assignments accumulating sum
+    {
+        std::string_view code = 
+            "sum: int = 0\n"
+            "sum = sum + 1\n"
+            "sum = sum + 2\n"
+            "sum = sum + 3\n"
+            "print sum\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out;
+        std::ostringstream err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+
+        assert(out.str() == "6\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_integration_programs passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_interpreter_tests() {
@@ -1291,4 +1749,11 @@ void run_interpreter_tests() {
     test_interpreter_grouping();
     test_interpreter_complex_expressions();
     test_interpreter_multiple_expressions_and_halt_on_error();
+
+    // New tests for statements, environment, and program execution
+    test_interpreter_environment_unit();
+    test_interpreter_var_decl_and_assign_stmts();
+    test_interpreter_expression_statement();
+    test_interpreter_runtime_errors();
+    test_interpreter_integration_programs();
 }
