@@ -8,14 +8,14 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-void Interpreter::interpret(const std::vector<expr>& expressions) {
+void Interpreter::interpret(const std::vector<expr>& expressions, std::ostream& out, std::ostream& err) {
     try {
         for (const auto& expression : expressions) {
             Value res = eval(expression);
-            std::print("{}\n", stringify(res));
+            out << stringify(res) << "\n";
         }
     } catch (const std::runtime_error& error) {
-        std::print(stderr, "{}\n", error.what());
+        err << error.what() << "\n";
     }
 }
 
@@ -55,7 +55,7 @@ bool Interpreter::isTruthy(const Value& val) {
 }
 
 Value Interpreter::evalUnary(const unary& u) {
-    Value right = eval(*u.right);
+    const Value right = eval(*u.right);
     TokenType opType = u.op.type;
     int line = u.op.line;
 
@@ -73,7 +73,7 @@ Value Interpreter::evalUnary(const unary& u) {
 
 Value Interpreter::evalBinary(const binary& b) {
     TokenType opType = b.op.type;
-    Value left_val = eval(*b.left);
+    const Value left_val = eval(*b.left);
     int line = b.op.line;
 
     if (opType == AND) {
@@ -85,7 +85,7 @@ Value Interpreter::evalBinary(const binary& b) {
         return eval(*b.right);
     }
 
-    Value right_val = eval(*b.right);
+    const Value right_val = eval(*b.right);
 
     if (opType == ADD) {
         return std::visit(overloaded{

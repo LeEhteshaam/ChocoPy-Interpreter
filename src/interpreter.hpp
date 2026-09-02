@@ -4,6 +4,8 @@
 #include <variant>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <ostream>
 
 using Value = std::variant<std::string, int, bool, std::monostate>;
 
@@ -16,5 +18,5 @@ private:
     bool isTruthy(const Value& val);
 
 public:
-    void interpret(const std::vector<expr>& expressions);
+    void interpret(const std::vector<expr>& expressions, std::ostream& out = std::cout, std::ostream& err = std::cerr);
 };
