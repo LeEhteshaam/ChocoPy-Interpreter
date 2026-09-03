@@ -146,14 +146,14 @@ struct stmt Parser::ifStatement() {
     std::vector<stmt> elseBranch;
 
     if (match({ELIF})) {
-        elseBranch = { ifStatement() };
-    } else if (match{ELSE}) {
+        elseBranch.push_back(ifStatement());
+    } else if (match({ELSE})) {
         consume(COLON, std::format("ParseError: Expected ':' after else on line {}", previous().line));
         elseBranch = block();
     }
 
     return stmt { ifStmt {
-        std::make_unqiue(std::move(branchCondition));
+        std::make_unique<expr>(std::move(branchCondition)),
         std::move(ifBranch),
         std::move(elseBranch)
     }};

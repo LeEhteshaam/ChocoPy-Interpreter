@@ -47,6 +47,7 @@ std::unordered_map<std::string_view, TokenType> tokenMap {
     {"pass", PASS},
     {"for", FOR},
     {"while", WHILE},
+    {"in", IN},
     {"(", LEFT_PAREN},
     {")", RIGHT_PAREN},
     {"[", LEFT_BRAC},

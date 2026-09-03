@@ -4,6 +4,7 @@
 #include "lexer.hpp"
 
 struct expr;
+struct stmt;
 
 struct literal {
     Token token;

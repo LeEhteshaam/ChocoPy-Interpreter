@@ -381,6 +381,82 @@ void test_tokenizer_arrow() {
     std::cout << "  test_tokenizer_arrow passed!\n";
 }
 
+void test_tokenizer_for_in_loop() {
+    // Test 'in' keyword in expressions
+    {
+        std::string_view code = "x in [1, 2]\n";
+        std::vector<Token> tokens = tokenizer(code);
+        assert(tokens.size() == 9);
+        assert(tokens[0].type == IDENTIFIER && tokens[0].lexeme == "x");
+        assert(tokens[1].type == IN && tokens[1].lexeme == "in");
+        assert(tokens[2].type == LEFT_BRAC && tokens[2].lexeme == "[");
+        assert(tokens[3].type == INT && std::get<int>(tokens[3].literal) == 1);
+        assert(tokens[4].type == COMMA && tokens[4].lexeme == ",");
+        assert(tokens[5].type == INT && std::get<int>(tokens[5].literal) == 2);
+        assert(tokens[6].type == RIGHT_BRAC && tokens[6].lexeme == "]");
+        assert(tokens[7].type == NEW_LINE && tokens[7].lexeme == "\n");
+        assert(tokens[8].type == END_OF_FILE);
+    }
+
+    // Test identifiers containing 'in' as prefix/substring/suffix to ensure no false match
+    {
+        std::string_view code = "inside bin win_in_game\n";
+        std::vector<Token> tokens = tokenizer(code);
+        assert(tokens.size() == 5);
+        assert(tokens[0].type == IDENTIFIER && tokens[0].lexeme == "inside");
+        assert(tokens[1].type == IDENTIFIER && tokens[1].lexeme == "bin");
+        assert(tokens[2].type == IDENTIFIER && tokens[2].lexeme == "win_in_game");
+        assert(tokens[3].type == NEW_LINE && tokens[3].lexeme == "\n");
+        assert(tokens[4].type == END_OF_FILE);
+    }
+
+    // Test for-in loop with string literal:
+    // char: str = ""
+    // for char in "chocopy":
+    //     print(char)
+    {
+        std::string_view code = 
+            "char: str = \"\"\n"
+            "for char in \"chocopy\":\n"
+            "    print(char)\n";
+        std::vector<Token> tokens = tokenizer(code);
+
+        // Expecting:
+        // Line 1: IDENTIFIER (char), COLON (:), STR_TYPE (str), ASSIGN (=), STR (""), NEW_LINE
+        // Line 2: FOR (for), IDENTIFIER (char), IN (in), STR ("chocopy"), COLON (:), NEW_LINE
+        // Line 3: INDENT, PRINT (print), LEFT_PAREN ((), IDENTIFIER (char), RIGHT_PAREN ()), NEW_LINE, DEDENT, EOF
+        assert(tokens.size() == 20);
+
+        // Line 1
+        assert(tokens[0].type == IDENTIFIER && tokens[0].lexeme == "char");
+        assert(tokens[1].type == COLON && tokens[1].lexeme == ":");
+        assert(tokens[2].type == STR_TYPE && tokens[2].lexeme == "str");
+        assert(tokens[3].type == ASSIGN && tokens[3].lexeme == "=");
+        assert(tokens[4].type == STR && tokens[4].lexeme == "\"\"" && std::get<std::string_view>(tokens[4].literal) == "\"\"");
+        assert(tokens[5].type == NEW_LINE && tokens[5].lexeme == "\n");
+
+        // Line 2
+        assert(tokens[6].type == FOR && tokens[6].lexeme == "for");
+        assert(tokens[7].type == IDENTIFIER && tokens[7].lexeme == "char");
+        assert(tokens[8].type == IN && tokens[8].lexeme == "in");
+        assert(tokens[9].type == STR && tokens[9].lexeme == "\"chocopy\"" && std::get<std::string_view>(tokens[9].literal) == "\"chocopy\"");
+        assert(tokens[10].type == COLON && tokens[10].lexeme == ":");
+        assert(tokens[11].type == NEW_LINE && tokens[11].lexeme == "\n");
+
+        // Line 3
+        assert(tokens[12].type == INDENT);
+        assert(tokens[13].type == PRINT && tokens[13].lexeme == "print");
+        assert(tokens[14].type == LEFT_PAREN && tokens[14].lexeme == "(");
+        assert(tokens[15].type == IDENTIFIER && tokens[15].lexeme == "char");
+        assert(tokens[16].type == RIGHT_PAREN && tokens[16].lexeme == ")");
+        assert(tokens[17].type == NEW_LINE && tokens[17].lexeme == "\n");
+        assert(tokens[18].type == DEDENT);
+        assert(tokens[19].type == END_OF_FILE);
+    }
+
+    std::cout << "  test_tokenizer_for_in_loop passed!\n";
+}
+
 void run_lexer_tests() {
     std::cout << "Running MakeToken unit tests...\n";
     test_make_token_map();
@@ -395,4 +471,5 @@ void run_lexer_tests() {
     test_tokenizer_unterminated_string();
     test_tokenizer_bad_indentation();
     test_tokenizer_single_slash();
+    test_tokenizer_for_in_loop();
 }
