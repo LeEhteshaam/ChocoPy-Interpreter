@@ -41,6 +41,7 @@ private:
     struct stmt whileStatement();
     struct stmt forStatement();
     struct stmt returnStatement();
+    struct stmt functionDefinition();
     std::vector<stmt> block();
     struct expr expression();
     struct expr logicalOr();
@@ -50,6 +51,8 @@ private:
     struct expr term();
     struct expr factor();
     struct expr unary();
+    struct expr call();
+    struct expr finishCall(); 
     struct expr primary();
 
 public: 

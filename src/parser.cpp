@@ -92,6 +92,10 @@ struct stmt Parser::statement() {
         return assignStatement();
     }
 
+    if (check(IDENTIFIER) && peekNext().type == LEFT_PAREN) {
+        return functionDefinition();
+    }
+
     if (match({IF})) {
         return ifStatement();
     }
@@ -134,6 +138,58 @@ std::vector<stmt> Parser::block() {
     consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
 
     return res;
+}
+
+struct stmt Parser::functionDefinition() {
+    Token name = consume(IDENTIFIER, std::format("ParseError: Expected function name on line {}", peek().line));
+    consume(LEFT_PAREN, std::format("ParseError: Expected a '(' on line {}", name.line));
+
+    std::vector<param> parameters;
+
+    if (!check(RIGHT_PAREN)) {
+        do {
+            Token paramName = consume(IDENTIFIER, std::format("ParseError: Expected an identifier on line {}", name.line));
+            consume(COLON, std::format("ParseError: Expected a ':' on line {}", name.line));
+            
+            if (isAtEnd()) {
+                throw std::runtime_error(std::format("ParseError: Unexpected end of file while parsing parameters on line {}", name.line));
+            }
+            
+            TokenType type = advance().type; 
+            
+            if (type != INT_TYPE && type != STR_TYPE && type != BOOL_TYPE) {
+                throw std::runtime_error(std::format("ParseError: Invalid type on line {}", name.line));
+            }
+
+            parameters.push_back(param { paramName, type });
+            
+        } while (match({COMMA})); 
+    }
+
+    consume(RIGHT_PAREN, std::format("ParseError: Expected a ')' on line {}", name.line));
+    TokenType returnType = NONE; 
+    
+    if (match({ARROW})) { 
+        if (isAtEnd()) {
+            throw std::runtime_error(std::format("ParseError: Unexpected end of file after '->' on line {}", name.line));
+        }
+        
+        returnType = advance().type;
+        
+        if (returnType != INT_TYPE && returnType != STR_TYPE && returnType != BOOL_TYPE && returnType != NONE) {
+            throw std::runtime_error(std::format("ParseError: Invalid return type on line {}", name.line));
+        }
+    }
+
+    consume(COLON, std::format("ParseError: Expected a ':' on line {}", name.line));
+    std::vector<stmt> functionBody = block();
+    
+    return stmt { funcDef { 
+        std::move(name), 
+        std::move(parameters), 
+        returnType, 
+        std::move(functionBody) 
+    }};
 }
 
 struct stmt Parser::returnStatement() {
@@ -371,8 +427,42 @@ struct expr Parser::unary() {
         return expr { std::move(node) };
     }
 
-    // If we did not find a unary, it must be a primary
-    return primary();
+    // If we did not find a unary, it must be a caller
+    return caller();
+}
+
+struct expr Parser::caller() {
+    expr callee = primary();
+    while (true) {
+        if (match({LEFT_PAREN})) {
+            callee = finishCall(std::move(callee));
+        } else {
+            break;
+        }
+    }
+    return callee;
+}
+
+struct expr Parser::finishCall(expr callee) {
+    // we must be on a left paren
+    consume(LEFT_PAREN, std::format("ParserError: Expected a '(' on line {}", previous().line));
+    std::vector<param> arguments;
+
+    if (!check(RIGHT_PAREN)) {
+         do {
+            if (isAtEnd()) {
+                throw std::runtime_error("ParseError: Unexpected end of file while parsing function arguments on line {}", previous().line);
+            }
+
+            arguments.push_back(expression());
+        } while(match(COMMA));
+    }
+
+    consume(RIGHT_PAREN, std::format("ParseError: Expected a ')' on line {}", previous().line));
+    return expr { callExpr { 
+        std::make_unique<expr>(std::move(callee)),
+        arguments
+    }}; 
 }
 
 struct expr Parser::primary() {

@@ -15,6 +15,11 @@ struct varExpr {
     Token name;
 };
 
+struct callExpr {
+    std::unique_ptr<expr> callee; 
+    std::vector<expr> arguments;
+};
+
 struct unary {
     Token op;
     std::unique_ptr<expr> right;
@@ -31,7 +36,7 @@ struct grouping {
 };
 
 struct expr {
-    std::variant<literal, varExpr, unary, binary, grouping> node;
+    std::variant<literal, varExpr, callExpr, unary, binary, grouping> node;
 };
 
 struct exprStmt {
@@ -73,6 +78,17 @@ struct returnStmt {
     std::unique_ptr<expr> expression;
 };
 
+struct param {
+    Token name;
+    TokenType type; 
+};
+
+struct funcDef {
+    Token name;
+    std::vector<param> params;
+    TokenType returnType;
+    std::vector<stmt> body;
+};
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef> node;
 };
