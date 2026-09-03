@@ -41,6 +41,8 @@ private:
     struct stmt whileStatement();
     std::vector<stmt> block();
     struct expr expression();
+    struct expr logicalOr();
+    struct expr logicalAnd();
     struct expr equality();
     struct expr comparison();
     struct expr term();

@@ -216,11 +216,45 @@ struct stmt Parser::expressionStatement() {
     return stmt { exprStmt { std::make_unique<expr>(std::move(val)) } };
 }
 
+// Methods for parsing
 struct expr Parser::expression() {
-    return equality();
+    return logicalOr();
 }
 
-// Methods for parsing
+struct expr Parser::logicalOr() {
+    expr expression = logicalAnd();
+
+    while (match({OR})) {
+        Token op = previous();
+        expr right = logicalAnd();
+
+        expression = expr { binary {
+            std::make_unique<expr>(std::move(expression)),
+            op,
+            std::make_unique<expr>(std::move(right))
+        }};
+    }
+
+    return expression;
+}
+
+struct expr Parser::logicalAnd() {
+    expr expression = equality();
+
+    while (match({AND})) {
+        Token op = previous();
+        expr right = equality();
+
+        expression = expr { binary {
+            std::make_unique<expr>(std::move(expression)),
+            op,
+            std::make_unique<expr>(std::move(right))
+        }};
+    }
+
+    return expression;
+}
+
 struct expr Parser::equality() {
     expr expression = comparison();
 
