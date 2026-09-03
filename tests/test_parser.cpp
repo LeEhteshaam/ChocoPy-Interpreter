@@ -1401,6 +1401,580 @@ void test_parser_mixed_program() {
     std::cout << "  test_parser_mixed_program passed!\n";
 }
 
+// --- Logical AND & OR Operators Unit Tests ---
+
+void test_parser_logical_operators() {
+    // Simple AND: True and False
+    {
+        std::string_view code = "True and False\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& b = std::get<binary>(get_expr(ast[0]).node);
+        assert(b.op.type == AND);
+        assert(std::holds_alternative<literal>(b.left->node));
+        assert(std::get<bool>(std::get<literal>(b.left->node).val) == true);
+        assert(std::holds_alternative<literal>(b.right->node));
+        assert(std::get<bool>(std::get<literal>(b.right->node).val) == false);
+        assert(capture_ast(ast[0]) == "True and False");
+    }
+
+    // Simple OR: a or b
+    {
+        std::string_view code = "a or b\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& b = std::get<binary>(get_expr(ast[0]).node);
+        assert(b.op.type == OR);
+        assert(std::holds_alternative<varExpr>(b.left->node));
+        assert(std::get<varExpr>(b.left->node).name.lexeme == "a");
+        assert(std::holds_alternative<varExpr>(b.right->node));
+        assert(std::get<varExpr>(b.right->node).name.lexeme == "b");
+        assert(capture_ast(ast[0]) == "a or b");
+    }
+
+    // Left associativity of AND: a and b and c -> ((a and b) and c)
+    {
+        std::string_view code = "a and b and c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == AND);
+        assert(std::holds_alternative<varExpr>(root.right->node));
+        assert(std::get<varExpr>(root.right->node).name.lexeme == "c");
+        assert(std::holds_alternative<binary>(root.left->node));
+        const auto& left_bin = std::get<binary>(root.left->node);
+        assert(left_bin.op.type == AND);
+        assert(std::get<varExpr>(left_bin.left->node).name.lexeme == "a");
+        assert(std::get<varExpr>(left_bin.right->node).name.lexeme == "b");
+    }
+
+    // Left associativity of OR: a or b or c -> ((a or b) or c)
+    {
+        std::string_view code = "a or b or c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == OR);
+        assert(std::holds_alternative<varExpr>(root.right->node));
+        assert(std::get<varExpr>(root.right->node).name.lexeme == "c");
+        assert(std::holds_alternative<binary>(root.left->node));
+        const auto& left_bin = std::get<binary>(root.left->node);
+        assert(left_bin.op.type == OR);
+        assert(std::get<varExpr>(left_bin.left->node).name.lexeme == "a");
+        assert(std::get<varExpr>(left_bin.right->node).name.lexeme == "b");
+    }
+
+    // Precedence: AND binds tighter than OR -> a or b and c -> a or (b and c)
+    {
+        std::string_view code = "a or b and c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == OR);
+        assert(std::holds_alternative<varExpr>(root.left->node));
+        assert(std::get<varExpr>(root.left->node).name.lexeme == "a");
+        assert(std::holds_alternative<binary>(root.right->node));
+        const auto& right_bin = std::get<binary>(root.right->node);
+        assert(right_bin.op.type == AND);
+        assert(std::get<varExpr>(right_bin.left->node).name.lexeme == "b");
+        assert(std::get<varExpr>(right_bin.right->node).name.lexeme == "c");
+    }
+
+    // Precedence: AND binds tighter than OR -> a and b or c -> (a and b) or c
+    {
+        std::string_view code = "a and b or c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == OR);
+        assert(std::holds_alternative<varExpr>(root.right->node));
+        assert(std::get<varExpr>(root.right->node).name.lexeme == "c");
+        assert(std::holds_alternative<binary>(root.left->node));
+        const auto& left_bin = std::get<binary>(root.left->node);
+        assert(left_bin.op.type == AND);
+        assert(std::get<varExpr>(left_bin.left->node).name.lexeme == "a");
+        assert(std::get<varExpr>(left_bin.right->node).name.lexeme == "b");
+    }
+
+    // Precedence: Equality binds tighter than AND -> x == 1 and y != 2
+    {
+        std::string_view code = "x == 1 and y != 2\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == AND);
+        assert(std::holds_alternative<binary>(root.left->node));
+        assert(std::get<binary>(root.left->node).op.type == EQUAL);
+        assert(std::holds_alternative<binary>(root.right->node));
+        assert(std::get<binary>(root.right->node).op.type == NOT_EQUAL);
+    }
+
+    // Precedence: Comparison binds tighter than AND/OR -> x > 0 and y <= 10 or z == 5
+    {
+        std::string_view code = "x > 0 and y <= 10 or z == 5\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == OR);
+        assert(std::holds_alternative<binary>(root.left->node));
+        const auto& left_and = std::get<binary>(root.left->node);
+        assert(left_and.op.type == AND);
+        assert(std::get<binary>(left_and.left->node).op.type == GREATER);
+        assert(std::get<binary>(left_and.right->node).op.type == LESS_EQUAL);
+        assert(std::holds_alternative<binary>(root.right->node));
+        assert(std::get<binary>(root.right->node).op.type == EQUAL);
+    }
+
+    // Precedence: Unary NOT binds tighter than AND -> not a and not b
+    {
+        std::string_view code = "not a and not b\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == AND);
+        assert(std::holds_alternative<unary>(root.left->node));
+        assert(std::get<unary>(root.left->node).op.type == NOT);
+        assert(std::holds_alternative<unary>(root.right->node));
+        assert(std::get<unary>(root.right->node).op.type == NOT);
+    }
+
+    // Grouping overrides precedence: (a or b) and c
+    {
+        std::string_view code = "(a or b) and c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& root = std::get<binary>(get_expr(ast[0]).node);
+        assert(root.op.type == AND);
+        assert(std::holds_alternative<grouping>(root.left->node));
+        const auto& group = std::get<grouping>(root.left->node);
+        assert(std::holds_alternative<binary>(group.expression->node));
+        assert(std::get<binary>(group.expression->node).op.type == OR);
+        assert(std::holds_alternative<varExpr>(root.right->node));
+        assert(std::get<varExpr>(root.right->node).name.lexeme == "c");
+    }
+
+    std::cout << "  test_parser_logical_operators passed!\n";
+}
+
+// --- If Statement Unit Tests ---
+
+void test_parser_if_statement() {
+    // Simple if statement
+    {
+        std::string_view code = 
+            "if x > 0:\n"
+            "    print x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<ifStmt>(ast[0].node));
+        const auto& stmt_if = std::get<ifStmt>(ast[0].node);
+        assert(std::holds_alternative<binary>(stmt_if.condition->node));
+        assert(std::get<binary>(stmt_if.condition->node).op.type == GREATER);
+        assert(stmt_if.ifBranch.size() == 1);
+        assert(std::holds_alternative<printStmt>(stmt_if.ifBranch[0].node));
+        assert(stmt_if.elseBranch.empty());
+    }
+
+    // If-else statement
+    {
+        std::string_view code = 
+            "if x == 0:\n"
+            "    print \"zero\"\n"
+            "else:\n"
+            "    print \"nonzero\"\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<ifStmt>(ast[0].node));
+        const auto& stmt_if = std::get<ifStmt>(ast[0].node);
+        assert(stmt_if.ifBranch.size() == 1);
+        assert(std::holds_alternative<printStmt>(stmt_if.ifBranch[0].node));
+        assert(stmt_if.elseBranch.size() == 1);
+        assert(std::holds_alternative<printStmt>(stmt_if.elseBranch[0].node));
+    }
+
+    // If-elif-else statement (desugared to nested if in elseBranch)
+    {
+        std::string_view code = 
+            "if x > 0:\n"
+            "    print \"pos\"\n"
+            "elif x < 0:\n"
+            "    print \"neg\"\n"
+            "else:\n"
+            "    print \"zero\"\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<ifStmt>(ast[0].node));
+        const auto& outer_if = std::get<ifStmt>(ast[0].node);
+        assert(outer_if.ifBranch.size() == 1);
+        assert(outer_if.elseBranch.size() == 1);
+        assert(std::holds_alternative<ifStmt>(outer_if.elseBranch[0].node));
+        const auto& elif_node = std::get<ifStmt>(outer_if.elseBranch[0].node);
+        assert(elif_node.ifBranch.size() == 1);
+        assert(elif_node.elseBranch.size() == 1);
+        assert(std::holds_alternative<printStmt>(elif_node.elseBranch[0].node));
+    }
+
+    // Multiple elif blocks: if - elif - elif - else
+    {
+        std::string_view code = 
+            "if x == 1:\n"
+            "    print 1\n"
+            "elif x == 2:\n"
+            "    print 2\n"
+            "elif x == 3:\n"
+            "    print 3\n"
+            "else:\n"
+            "    print 0\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& if1 = std::get<ifStmt>(ast[0].node);
+        assert(if1.elseBranch.size() == 1);
+        const auto& if2 = std::get<ifStmt>(if1.elseBranch[0].node);
+        assert(if2.elseBranch.size() == 1);
+        const auto& if3 = std::get<ifStmt>(if2.elseBranch[0].node);
+        assert(if3.elseBranch.size() == 1);
+        assert(std::holds_alternative<printStmt>(if3.elseBranch[0].node));
+    }
+
+    // Nested if statement inside block
+    {
+        std::string_view code = 
+            "if x > 0:\n"
+            "    if y > 0:\n"
+            "        print 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& outer_if = std::get<ifStmt>(ast[0].node);
+        assert(outer_if.ifBranch.size() == 1);
+        assert(std::holds_alternative<ifStmt>(outer_if.ifBranch[0].node));
+    }
+
+    // Error: Missing colon after if condition
+    {
+        std::string_view code = 
+            "if x > 0\n"
+            "    print x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected ':' after if condition") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing colon after else
+    {
+        std::string_view code = 
+            "if x > 0:\n"
+            "    print x\n"
+            "else\n"
+            "    print 0\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected ':' after else") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Variable declaration not allowed inside block
+    {
+        std::string_view code = 
+            "if True:\n"
+            "    x: int = 5\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Variable declarations are not allowed inside blocks") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_if_statement passed!\n";
+}
+
+// --- While Statement Unit Tests ---
+
+void test_parser_while_statement() {
+    // Simple while loop
+    {
+        std::string_view code = 
+            "while x > 0:\n"
+            "    x = x - 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<whileStmt>(ast[0].node));
+        const auto& stmt_while = std::get<whileStmt>(ast[0].node);
+        assert(std::holds_alternative<binary>(stmt_while.condition->node));
+        assert(std::get<binary>(stmt_while.condition->node).op.type == GREATER);
+        assert(stmt_while.body.size() == 1);
+        assert(std::holds_alternative<assignStmt>(stmt_while.body[0].node));
+        assert(std::get<assignStmt>(stmt_while.body[0].node).name.lexeme == "x");
+    }
+
+    // While loop with multiple body statements including if
+    {
+        std::string_view code = 
+            "while i < 10:\n"
+            "    if i == 5:\n"
+            "        print i\n"
+            "    i = i + 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& stmt_while = std::get<whileStmt>(ast[0].node);
+        assert(stmt_while.body.size() == 2);
+        assert(std::holds_alternative<ifStmt>(stmt_while.body[0].node));
+        assert(std::holds_alternative<assignStmt>(stmt_while.body[1].node));
+    }
+
+    // Nested while loop
+    {
+        std::string_view code = 
+            "while i < 3:\n"
+            "    while j < 3:\n"
+            "        j = j + 1\n"
+            "    i = i + 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& outer_while = std::get<whileStmt>(ast[0].node);
+        assert(outer_while.body.size() == 2);
+        assert(std::holds_alternative<whileStmt>(outer_while.body[0].node));
+    }
+
+    // Error: Missing colon after while condition
+    {
+        std::string_view code = 
+            "while x > 0\n"
+            "    x = x - 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected ':' after while condition") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Variable declaration inside while block
+    {
+        std::string_view code = 
+            "while True:\n"
+            "    x: int = 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Variable declarations are not allowed inside blocks") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_while_statement passed!\n";
+}
+
+// --- For Statement Unit Tests ---
+
+void test_parser_for_statement() {
+    // Simple for loop with string literal iterable
+    {
+        std::string_view code = 
+            "for c in \"hello\":\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<forStmt>(ast[0].node));
+        const auto& stmt_for = std::get<forStmt>(ast[0].node);
+        assert(stmt_for.loopVar.type == IDENTIFIER);
+        assert(stmt_for.loopVar.lexeme == "c");
+        assert(std::holds_alternative<literal>(stmt_for.iterable->node));
+        assert(stmt_for.body.size() == 1);
+        assert(std::holds_alternative<printStmt>(stmt_for.body[0].node));
+    }
+
+    // For loop with identifier iterable
+    {
+        std::string_view code = 
+            "for char in word:\n"
+            "    print char\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& stmt_for = std::get<forStmt>(ast[0].node);
+        assert(stmt_for.loopVar.lexeme == "char");
+        assert(std::holds_alternative<varExpr>(stmt_for.iterable->node));
+        assert(std::get<varExpr>(stmt_for.iterable->node).name.lexeme == "word");
+    }
+
+    // Nested for loop
+    {
+        std::string_view code = 
+            "for i in \"ab\":\n"
+            "    for j in \"cd\":\n"
+            "        print j\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& outer_for = std::get<forStmt>(ast[0].node);
+        assert(outer_for.loopVar.lexeme == "i");
+        assert(outer_for.body.size() == 1);
+        assert(std::holds_alternative<forStmt>(outer_for.body[0].node));
+        const auto& inner_for = std::get<forStmt>(outer_for.body[0].node);
+        assert(inner_for.loopVar.lexeme == "j");
+    }
+
+    // For loop containing if statement
+    {
+        std::string_view code = 
+            "for c in \"a b c\":\n"
+            "    if c != \" \":\n"
+            "        print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        const auto& stmt_for = std::get<forStmt>(ast[0].node);
+        assert(stmt_for.body.size() == 1);
+        assert(std::holds_alternative<ifStmt>(stmt_for.body[0].node));
+    }
+
+    // Error: Missing identifier after for
+    {
+        std::string_view code = 
+            "for in \"abc\":\n"
+            "    print 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a identifier") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing 'in' keyword
+    {
+        std::string_view code = 
+            "for c \"abc\":\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected 'in' after identifier") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing colon after for condition
+    {
+        std::string_view code = 
+            "for c in \"abc\"\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected ':' after for condition") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Variable declaration inside for block
+    {
+        std::string_view code = 
+            "for c in \"abc\":\n"
+            "    x: int = 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Variable declarations are not allowed inside blocks") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_for_statement passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_parser_tests() {
@@ -1418,7 +1992,7 @@ void run_parser_tests() {
     test_parser_error_unexpected_primary();
     test_parser_synchronization_branches();
 
-    // New tests for statement parsing
+    // Statement and expression parsing
     test_parser_var_declaration();
     test_parser_assign_statement();
     test_parser_print_statement();
@@ -1426,4 +2000,10 @@ void run_parser_tests() {
     test_parser_var_expression();
     test_parser_peek_next_branches();
     test_parser_mixed_program();
+
+    // Control flow and logical operator parsing
+    test_parser_logical_operators();
+    test_parser_if_statement();
+    test_parser_while_statement();
+    test_parser_for_statement();
 }
