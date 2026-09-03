@@ -18,7 +18,7 @@ void Environment::define(const Token& nameToken, TokenType declaredType, Value v
     if (environment.contains(name)) {
         throw std::runtime_error(std::format("RuntimeError: Variable '{}' is already defined on line {}", name, nameToken.line));
     }
-
+    
     if (declaredType != getTypeOfValue(val)) {
         throw std::runtime_error(std::format("RuntimeError: Type mismatch on line {}", nameToken.line));
     }
@@ -30,6 +30,12 @@ void Environment::assign(const Token& nameToken, Value val) {
     std::string name = std::string(nameToken.lexeme);
 
     if (!environment.contains(name)) {
+        // call assign on parent environment 
+        if (parent != nullptr) {
+            parent->assign(nameToken, val);
+            return;
+        }
+
         throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", name, nameToken.line));
     }
 
@@ -48,6 +54,11 @@ Value Environment::get(const Token& nameToken) {
 
     if (environment.contains(name)) {
         return environment[name];
+    }
+
+    // check parent environment
+    if (parent != nullptr) {
+        return parent->get(nameToken);
     }
 
     throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", name, nameToken.line));
