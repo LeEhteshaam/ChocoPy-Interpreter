@@ -26,26 +26,26 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     Value result = eval(*a.value);
                     env.assign(a.name, result);
                 },
-                [this](const ifStmt& f) {
+                [this, &out, &err](const ifStmt& f) {
                     Value branchCondition = eval(*f.condition);
                     if (isTruthy(branchCondition)) {
-                        interpret(f.ifBranch);
+                        interpret(f.ifBranch, out, err);
                     } else {
-                        interpret(f.elseBranch);
+                        interpret(f.elseBranch, out, err);
                     }
                 },
-                [this](const whileStmt& w) {
+                [this, &out, &err](const whileStmt& w) {
                     while (isTruthy(eval(*w.condition))) {
-                        interpret(w.body);
+                        interpret(w.body, out, err);
                     }
                 },
-                [this](const forStmt& fl) {
+                [this, &out, &err](const forStmt& fl) {
                     Value iterable = eval(*fl.iterable);
                     std::visit(overloaded {
-                        [this, &fl](const std::string& str_val) {
+                        [this, &fl, &out, &err](const std::string& str_val) {
                             for (char c : str_val) {
                                 env.assign(fl.loopVar, std::string(1, c));
-                                interpret(fl.body); 
+                                interpret(fl.body, out, err); 
                             }
                         },
                         [&fl](const auto& non_iterable) {
@@ -169,6 +169,19 @@ Value Interpreter::evalBinary(const binary& b) {
             },
             [line](auto&& l, auto&& r) -> Value {
                 throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for // on line {}", line));
+            }
+        }, left_val, right_val);
+
+    } else if (opType == MODULO) {
+        return std::visit(overloaded{
+            [line](int l, int r) -> Value {
+                if (r == 0) {
+                    throw std::runtime_error(std::format("RuntimeError: division by zero on line {}", line));
+                }
+                return l % r;
+            },
+            [line](auto&& l, auto&& r) -> Value {
+                throw std::runtime_error(std::format("RuntimeError: unsupported operand type(s) for % on line {}", line));
             }
         }, left_val, right_val);
 

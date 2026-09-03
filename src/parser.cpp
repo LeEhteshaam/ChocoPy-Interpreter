@@ -138,14 +138,14 @@ struct stmt Parser::forStatement() {
 
     consume(IN, std::format("ParseError: Expected 'in' after identifier on line {}", previous().line));
     
-    expr iterable = expresison();
+    expr iterable = expression();
 
     consume(COLON, std::format("ParseError: Expected ':' after for condition on line {}", previous().line));    
     std::vector<stmt> loopBody = block();
 
     return stmt { forStmt { 
         std::move(id),
-        std::make_unqiue<expr>(std::move(iterable)),
+        std::make_unique<expr>(std::move(iterable)),
         std::move(loopBody)
     }};
 }
