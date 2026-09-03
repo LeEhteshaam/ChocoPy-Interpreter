@@ -57,6 +57,56 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     // use stack unwinding for return values (performance is already tanked by tree-walking approach lol)
                     Value val = eval(*r.expression);
                     throw ReturnException(val);
+                },
+                [this](const funcDef& fd) {
+                    env->addFunc(f.name, f, this->env);
+                },
+                [this, &out, &err](const callExpr& c) {
+                    struct closure func = env->getFunc(c.name);
+
+                    if (c.arguments.size() != func.func.params.size()) {
+                        throw std::runtime_error(std::format("RuntimeError: Expected {} arguments but got {} on line {}", 
+                        func.func.parameters.size(), c.arguments.size(), c.functionName.line));
+                    }
+
+                    std::vector<Value> evaluatedArgs;
+                    for (const auto& arg : c.arguments) {
+                        evaluatedArgs.push_back(eval(arg)); 
+                    }
+                    
+                    auto localEnv = std::make_shared<Environment>(func.closureEnv);
+
+                    for (size_t i = 0; i < evaluatedArgs.size(); ++i) {
+                        localEnv->define(
+                        func.func.parameters[i].name, 
+                        func.func.parameters[i].type, 
+                        evaluatedArgs[i]);
+                    }
+
+                    auto previousEnv = this->env;
+                    this->env = localEnv;
+                    Value returnValue = std::monostate{};
+
+                    try {
+                        interpret(func.func.body, out, err); 
+                    } catch (const ReturnException& ret) {
+                        returnValue = ret.returnValue; 
+                    }
+                    
+                    this->env = previousEnv;
+                    TokenType actualReturnType = std::visit(overloaded{
+                        [](int) -> TokenType { return INT_TYPE; },
+                        [](const std::string&) -> TokenType { return STR_TYPE; },
+                        [](bool) -> TokenType { return BOOL_TYPE; },
+                        [](std::monostate) -> TokenType { return NONE; }
+                    }, returnValue);
+
+                    if (actualReturnType != func.func.returnType) {
+                        throw std::runtime_error(std::format("RuntimeError: Function '{}' expected return type on line {}", 
+                            func.func.name.lexeme, func.func.name.line));
+                    }
+
+                    return returnValue;
                 }
             }, statement.node);
         }
