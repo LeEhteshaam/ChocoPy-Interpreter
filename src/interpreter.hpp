@@ -10,6 +10,12 @@
 
 using Value = std::variant<std::string, int, bool, std::monostate>;
 
+class ReturnException {
+public:
+    Value returnValue;    
+    ReturnException(Value val) : returnValue(std::move(val)) {}
+};
+
 class Interpreter {
 private:
     Environment env;

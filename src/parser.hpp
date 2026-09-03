@@ -40,6 +40,7 @@ private:
     struct stmt ifStatement();
     struct stmt whileStatement();
     struct stmt forStatement();
+    struct stmt returnStatement();
     std::vector<stmt> block();
     struct expr expression();
     struct expr logicalOr();

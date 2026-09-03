@@ -96,6 +96,10 @@ struct stmt Parser::statement() {
         return ifStatement();
     }
 
+    if (match({RETURN})) {
+        return returnStatement();
+    }
+
     if (match({FOR})) {
         return forStatement();
     }
@@ -130,6 +134,17 @@ std::vector<stmt> Parser::block() {
     consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
 
     return res;
+}
+
+struct stmt Parser::returnStatement() {
+    Token prev = previous();
+    expr returnVal = expression();
+
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a newline after return expression on line {}", prev.line));
+    }
+
+    return stmt { returnStmt {std::make_unique<expr>(std::move(returnVal))} };
 }
 
 struct stmt Parser::forStatement() {

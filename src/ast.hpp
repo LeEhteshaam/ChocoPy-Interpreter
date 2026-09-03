@@ -69,6 +69,10 @@ struct forStmt {
     std::vector<stmt> body;
 };
 
+struct returnStmt {
+    std::unique_ptr<expr> expression;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt> node;
 };

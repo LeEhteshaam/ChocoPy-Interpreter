@@ -52,6 +52,11 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                             throw std::runtime_error(std::format("RuntimeError: object is not iterable on line {}", fl.loopVar.line));
                         }
                     }, iterable);
+                },
+                [this, &out, &err](const returnStmt& r) {
+                    // use stack unwinding for return values (performance is already tanked by tree-walking approach lol)
+                    Value val = eval(*r.expression);
+                    throw ReturnException(val);
                 }
             }, statement.node);
         }
