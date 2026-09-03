@@ -96,6 +96,10 @@ struct stmt Parser::statement() {
         return ifStatement();
     }
 
+    if (match({FOR})) {
+        return forStatement();
+    }
+
     if (match({WHILE})) {
         return whileStatement();
     }
@@ -126,6 +130,24 @@ std::vector<stmt> Parser::block() {
     consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
 
     return res;
+}
+
+struct stmt Parser::forStatement() {
+    consume(IDENTIFIER, std::format("ParseError: Expected a identifier on line {}", previous().line));
+    Token id = previous();
+
+    consume(IN, std::format("ParseError: Expected 'in' after identifier on line {}", previous().line));
+    
+    expr iterable = expresison();
+
+    consume(COLON, std::format("ParseError: Expected ':' after for condition on line {}", previous().line));    
+    std::vector<stmt> loopBody = block();
+
+    return stmt { forStmt { 
+        std::move(id),
+        std::make_unqiue<expr>(std::move(iterable)),
+        std::move(loopBody)
+    }};
 }
 
 struct stmt Parser::whileStatement() {

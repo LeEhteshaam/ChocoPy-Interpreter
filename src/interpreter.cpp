@@ -38,8 +38,21 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     while (isTruthy(eval(*w.condition))) {
                         interpret(w.body);
                     }
+                },
+                [this](const forStmt& fl) {
+                    Value iterable = eval(*fl.iterable);
+                    std::visit(overloaded {
+                        [this, &fl](const std::string& str_val) {
+                            for (char c : str_val) {
+                                env.assign(fl.loopVar, std::string(1, c));
+                                interpret(fl.body); 
+                            }
+                        },
+                        [&fl](const auto& non_iterable) {
+                            throw std::runtime_error(std::format("RuntimeError: object is not iterable on line {}", fl.loopVar.line));
+                        }
+                    }, iterable);
                 }
-
             }, statement.node);
         }
     } catch (const std::runtime_error& error) {

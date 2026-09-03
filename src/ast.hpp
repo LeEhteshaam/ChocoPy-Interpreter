@@ -63,6 +63,12 @@ struct whileStmt {
     std::vector<stmt> body;
 };
 
+struct forStmt {
+    Token loopVar;
+    std::unique_ptr<expr> iterable;
+    std::vector<stmt> body;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt>node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt> node;
 };
