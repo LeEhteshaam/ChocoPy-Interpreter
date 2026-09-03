@@ -51,7 +51,6 @@ private:
     struct expr term();
     struct expr factor();
     struct expr unary();
-    struct expr call();
     struct expr finishCall(); 
     struct expr primary();
 

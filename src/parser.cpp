@@ -427,25 +427,11 @@ struct expr Parser::unary() {
         return expr { std::move(node) };
     }
 
-    // If we did not find a unary, it must be a caller
-    return caller();
+    // If we did not find a unary, it must be a primary
+    return primary();
 }
 
-struct expr Parser::caller() {
-    expr callee = primary();
-    while (true) {
-        if (match({LEFT_PAREN})) {
-            callee = finishCall(std::move(callee));
-        } else {
-            break;
-        }
-    }
-    return callee;
-}
-
-struct expr Parser::finishCall(expr callee) {
-    // we must be on a left paren
-    consume(LEFT_PAREN, std::format("ParserError: Expected a '(' on line {}", previous().line));
+struct expr Parser::finishCall(Token name) {
     std::vector<param> arguments;
 
     if (!check(RIGHT_PAREN)) {
@@ -460,7 +446,7 @@ struct expr Parser::finishCall(expr callee) {
 
     consume(RIGHT_PAREN, std::format("ParseError: Expected a ')' on line {}", previous().line));
     return expr { callExpr { 
-        std::make_unique<expr>(std::move(callee)),
+        name,
         arguments
     }}; 
 }
@@ -470,6 +456,11 @@ struct expr Parser::primary() {
     if (match({TRUE})) return expr { literal { previous(), true } }; 
     if (match({NONE})) return expr { literal { previous(), std::monostate{} } };
     if (match({IDENTIFIER})) {
+
+        if (match{LEFT_PAREN}) {
+            return finishCall(previous());
+        }
+
         return expr { varExpr { previous() } };
     }
     if (match({INT, STR})) {

@@ -16,7 +16,7 @@ struct varExpr {
 };
 
 struct callExpr {
-    std::unique_ptr<expr> callee; 
+    Token name; 
     std::vector<expr> arguments;
 };
 
