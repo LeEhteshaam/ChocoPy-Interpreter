@@ -30,6 +30,37 @@ static stmt make_assign(Token name, expr value) {
     return stmt{assignStmt{name, std::make_unique<expr>(std::move(value))}};
 }
 
+template <typename... Args>
+static std::vector<stmt> make_stmt_vec(Args&&... args) {
+    std::vector<stmt> v;
+    v.reserve(sizeof...(Args));
+    (v.push_back(std::forward<Args>(args)), ...);
+    return v;
+}
+
+static stmt make_if_stmt(expr condition, std::vector<stmt> ifBranch, std::vector<stmt> elseBranch = {}) {
+    return stmt{ifStmt{
+        std::make_unique<expr>(std::move(condition)),
+        std::move(ifBranch),
+        std::move(elseBranch)
+    }};
+}
+
+static stmt make_while_stmt(expr condition, std::vector<stmt> body) {
+    return stmt{whileStmt{
+        std::make_unique<expr>(std::move(condition)),
+        std::move(body)
+    }};
+}
+
+static stmt make_for_stmt(Token loopVar, expr iterable, std::vector<stmt> body) {
+    return stmt{forStmt{
+        std::move(loopVar),
+        std::make_unique<expr>(std::move(iterable)),
+        std::move(body)
+    }};
+}
+
 // --- Stream Output Capture Helpers ---
 
 struct CapturedOutput {
@@ -722,6 +753,65 @@ void test_interpreter_binary_int_divide_errors() {
     std::cout << "  test_interpreter_binary_int_divide_errors passed!\n";
 }
 
+void test_interpreter_binary_modulo() {
+    // int % int
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(MODULO, "%"), make_literal_int(3)));
+        assert(res.out == "1\n");
+        assert(res.err.empty());
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(7), make_op(MODULO, "%"), make_literal_int(2)));
+        assert(res.out == "1\n");
+        assert(res.err.empty());
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(6), make_op(MODULO, "%"), make_literal_int(3)));
+        assert(res.out == "0\n");
+        assert(res.err.empty());
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(0), make_op(MODULO, "%"), make_literal_int(5)));
+        assert(res.out == "0\n");
+        assert(res.err.empty());
+    }
+
+    std::cout << "  test_interpreter_binary_modulo passed!\n";
+}
+
+void test_interpreter_binary_modulo_errors() {
+    // Modulo by zero
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(MODULO, "%", 47), make_literal_int(0)));
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: division by zero on line 47\n");
+    }
+
+    // Unsupported operands
+    {
+        auto res = capture_interpret(make_binary(make_literal_str("a"), make_op(MODULO, "%", 48), make_literal_str("b")));
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: unsupported operand type(s) for % on line 48\n");
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(MODULO, "%", 49), make_literal_str("2")));
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: unsupported operand type(s) for % on line 49\n");
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_bool(true), make_op(MODULO, "%", 50), make_literal_bool(true)));
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: unsupported operand type(s) for % on line 50\n");
+    }
+    {
+        auto res = capture_interpret(make_binary(make_literal_none(), make_op(MODULO, "%", 51), make_literal_none()));
+        assert(res.out.empty());
+        assert(res.err == "RuntimeError: unsupported operand type(s) for % on line 51\n");
+    }
+
+    std::cout << "  test_interpreter_binary_modulo_errors passed!\n";
+}
+
 // --- Binary Equality & Comparison Unit Tests ---
 
 void test_interpreter_binary_equal() {
@@ -1137,14 +1227,14 @@ void test_interpreter_binary_less_equal_errors() {
 }
 
 void test_interpreter_binary_invalid_op_error() {
-    // Binary expression with an unhandled operator type (e.g. MODULO or ASSIGN)
+    // Binary expression with an unhandled operator type (e.g. DOT or ARROW)
     {
-        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(MODULO, "%", 90), make_literal_int(3)));
+        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(DOT, ".", 90), make_literal_int(3)));
         assert(res.out.empty());
         assert(res.err == "RuntimeError: Invalid op type on line 90\n");
     }
     {
-        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(ASSIGN, "=", 91), make_literal_int(5)));
+        auto res = capture_interpret(make_binary(make_literal_int(10), make_op(ARROW, "->", 91), make_literal_int(5)));
         assert(res.out.empty());
         assert(res.err == "RuntimeError: Invalid op type on line 91\n");
     }
@@ -1717,6 +1807,653 @@ void test_interpreter_integration_programs() {
     std::cout << "  test_interpreter_integration_programs passed!\n";
 }
 
+// --- If Statements via Interpreter ---
+
+void test_interpreter_if_statement() {
+    // AST level: if True executes ifBranch
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_bool(true),
+            make_stmt_vec(make_print_stmt(make_literal_str("then_branch"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else_branch")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "then_branch\n");
+        assert(res.err.empty());
+    }
+
+    // AST level: if False executes elseBranch
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_bool(false),
+            make_stmt_vec(make_print_stmt(make_literal_str("then_branch"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else_branch")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "else_branch\n");
+        assert(res.err.empty());
+    }
+
+    // AST level: if False without else does nothing
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_bool(false),
+            make_stmt_vec(make_print_stmt(make_literal_str("then_branch")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err.empty());
+    }
+
+    // AST level: Condition truthiness
+    // Integer 0 is falsy (executes else)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_int(0),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "else\n");
+        assert(res.err.empty());
+    }
+    // Integer non-zero (e.g. 42, -5) is truthy (executes then)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_int(42),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "then\n");
+        assert(res.err.empty());
+    }
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_int(-5),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "then\n");
+        assert(res.err.empty());
+    }
+    // String "" is falsy (executes else)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_str(""),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "else\n");
+        assert(res.err.empty());
+    }
+    // String non-empty is truthy (executes then)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_str("hello"),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "then\n");
+        assert(res.err.empty());
+    }
+    // None is falsy (executes else)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_if_stmt(
+            make_literal_none(),
+            make_stmt_vec(make_print_stmt(make_literal_str("then"))),
+            make_stmt_vec(make_print_stmt(make_literal_str("else")))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out == "else\n");
+        assert(res.err.empty());
+    }
+
+    // End-to-end: if-else parsed program modifying environment
+    {
+        std::string_view code = 
+            "x: int = 10\n"
+            "res: int = 0\n"
+            "if x > 5:\n"
+            "    res = 1\n"
+            "else:\n"
+            "    res = 2\n"
+            "print res\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "1\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: if-elif-else parsed program
+    {
+        std::string_view code = 
+            "score: int = 85\n"
+            "grade: str = \"\"\n"
+            "if score >= 90:\n"
+            "    grade = \"A\"\n"
+            "elif score >= 80:\n"
+            "    grade = \"B\"\n"
+            "elif score >= 70:\n"
+            "    grade = \"C\"\n"
+            "else:\n"
+            "    grade = \"F\"\n"
+            "print grade\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "\"B\"\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: if-elif-else fallthrough to else
+    {
+        std::string_view code = 
+            "x: int = -5\n"
+            "sign: int = 0\n"
+            "if x > 0:\n"
+            "    sign = 1\n"
+            "elif x == 0:\n"
+            "    sign = 0\n"
+            "else:\n"
+            "    sign = -1\n"
+            "print sign\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "-1\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Nested if-else blocks
+    {
+        std::string_view code = 
+            "a: int = 10\n"
+            "b: int = 20\n"
+            "if a > 5:\n"
+            "    if b > 15:\n"
+            "        print 1\n"
+            "    else:\n"
+            "        print 2\n"
+            "else:\n"
+            "    print 3\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "1\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_if_statement passed!\n";
+}
+
+// --- While Statements via Interpreter ---
+
+void test_interpreter_while_statement() {
+    // AST level: Simple while loop counting down
+    {
+        std::vector<stmt> stmts;
+        Token tok_x = make_token(IDENTIFIER, "x", 1, 1);
+        // x: int = 3
+        stmts.push_back(make_var_decl(INT_TYPE, tok_x, make_literal_int(3)));
+        // while x > 0: print x; x = x - 1
+        stmts.push_back(make_while_stmt(
+            make_binary(make_var_expr("x"), make_op(GREATER, ">"), make_literal_int(0)),
+            make_stmt_vec(
+                make_print_stmt(make_var_expr("x")),
+                make_assign(tok_x, make_binary(make_var_expr("x"), make_op(MINUS, "-"), make_literal_int(1)))
+            )
+        ));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "3\n2\n1\n");
+        assert(res.err.empty());
+    }
+
+    // AST level: Condition initially false (0 iterations)
+    {
+        std::vector<stmt> stmts;
+        stmts.push_back(make_while_stmt(
+            make_literal_bool(false),
+            make_stmt_vec(make_print_stmt(make_literal_int(999)))
+        ));
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err.empty());
+    }
+
+    // End-to-end: Sum numbers 1 through 5
+    {
+        std::string_view code = 
+            "i: int = 1\n"
+            "sum: int = 0\n"
+            "while i <= 5:\n"
+            "    sum = sum + i\n"
+            "    i = i + 1\n"
+            "print sum\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "15\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Factorial computation
+    {
+        std::string_view code = 
+            "n: int = 5\n"
+            "fact: int = 1\n"
+            "while n > 0:\n"
+            "    fact = fact * n\n"
+            "    n = n - 1\n"
+            "print fact\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "120\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Nested while loops
+    {
+        std::string_view code = 
+            "i: int = 0\n"
+            "j: int = 0\n"
+            "count: int = 0\n"
+            "while i < 3:\n"
+            "    j = 0\n"
+            "    while j < 2:\n"
+            "        count = count + 1\n"
+            "        j = j + 1\n"
+            "    i = i + 1\n"
+            "print count\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "6\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: While loop containing if-else
+    {
+        std::string_view code = 
+            "i: int = 1\n"
+            "evens: int = 0\n"
+            "odds: int = 0\n"
+            "while i <= 6:\n"
+            "    if i % 2 == 0:\n"
+            "        evens = evens + 1\n"
+            "    else:\n"
+            "        odds = odds + 1\n"
+            "    i = i + 1\n"
+            "print evens\n"
+            "print odds\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "3\n3\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_while_statement passed!\n";
+}
+
+// --- For Statements via Interpreter ---
+
+void test_interpreter_for_statement() {
+    // AST level: Simple for loop over string literal
+    {
+        std::vector<stmt> stmts;
+        Token tok_c = make_token(IDENTIFIER, "c", 1, 1);
+        // c: str = ""
+        stmts.push_back(make_var_decl(STR_TYPE, tok_c, make_literal_str("")));
+        // for c in "abc": print c
+        stmts.push_back(make_for_stmt(
+            tok_c,
+            make_literal_str("abc"),
+            make_stmt_vec(make_print_stmt(make_var_expr("c")))
+        ));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out == "a\nb\nc\n");
+        assert(res.err.empty());
+    }
+
+    // AST level: Loop over empty string (0 iterations)
+    {
+        std::vector<stmt> stmts;
+        Token tok_c = make_token(IDENTIFIER, "c", 1, 1);
+        stmts.push_back(make_var_decl(STR_TYPE, tok_c, make_literal_str("")));
+        stmts.push_back(make_for_stmt(
+            tok_c,
+            make_literal_str(""),
+            make_stmt_vec(make_print_stmt(make_literal_str("should_not_print")))
+        ));
+
+        auto res = capture_interpret(stmts);
+        assert(res.out.empty());
+        assert(res.err.empty());
+    }
+
+    // End-to-end: Iterating string literal
+    {
+        std::string_view code = 
+            "char: str = \"\"\n"
+            "for char in \"abc\":\n"
+            "    print char\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // Note: String literal in tokenizer preserves surrounding quotes: "\"abc\"" -> iterates ", a, b, c, "
+        assert(out.str() == "\"\na\nb\nc\n\"\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Iterating string variable and accumulating count
+    {
+        std::string_view code = 
+            "text: str = \"chocopy\"\n"
+            "c: str = \"\"\n"
+            "count: int = 0\n"
+            "for c in text:\n"
+            "    count = count + 1\n"
+            "print count\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // Length of "\"chocopy\"" is 9 (including quotes)
+        assert(out.str() == "9\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: Nested for loops
+    {
+        std::string_view code = 
+            "c1: str = \"\"\n"
+            "c2: str = \"\"\n"
+            "total: int = 0\n"
+            "for c1 in \"ab\":\n"
+            "    for c2 in \"12\":\n"
+            "        total = total + 1\n"
+            "print total\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // "ab" is 4 chars ("a b "), "12" is 4 chars (" 1 2 ") -> 4 * 4 = 16
+        assert(out.str() == "16\n");
+        assert(err.str().empty());
+    }
+
+    // End-to-end: For loop iterating string variable
+    {
+        std::string_view code = 
+            "word: str = \"hi\"\n"
+            "c: str = \"\"\n"
+            "for c in word:\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "\"\nh\ni\n\"\n");
+        assert(err.str().empty());
+    }
+
+    // RuntimeError: Loop variable not defined in environment
+    {
+        std::string_view code = 
+            "for c in \"abc\":\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str() == "RuntimeError: Undefined variable 'c' on line 1\n");
+    }
+
+    // RuntimeError: Loop variable type mismatch (defined as int instead of str)
+    {
+        std::string_view code = 
+            "c: int = 0\n"
+            "for c in \"abc\":\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str() == "RuntimeError: Type mismatch on reassignment to 'c' on line 2\n");
+    }
+
+    // RuntimeError: Object is not iterable (int)
+    {
+        std::string_view code = 
+            "c: str = \"\"\n"
+            "for c in 42:\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str() == "RuntimeError: object is not iterable on line 2\n");
+    }
+
+    // RuntimeError: Object is not iterable (bool)
+    {
+        std::string_view code = 
+            "c: str = \"\"\n"
+            "for c in True:\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str() == "RuntimeError: object is not iterable on line 2\n");
+    }
+
+    // RuntimeError: Object is not iterable (None)
+    {
+        std::string_view code = 
+            "c: str = \"\"\n"
+            "for c in None:\n"
+            "    print c\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str() == "RuntimeError: object is not iterable on line 2\n");
+    }
+
+    std::cout << "  test_interpreter_for_statement passed!\n";
+}
+
+// --- End-to-End Control Flow Integration Tests ---
+
+void test_interpreter_control_flow_integration() {
+    // Short-circuiting in if condition avoids division by zero
+    {
+        std::string_view code = 
+            "x: int = 0\n"
+            "if x != 0 and 10 // x > 1:\n"
+            "    print 1\n"
+            "else:\n"
+            "    print 0\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "0\n");
+        assert(err.str().empty());
+    }
+
+    // Short-circuiting OR in if condition avoids division by zero
+    {
+        std::string_view code = 
+            "x: int = 0\n"
+            "if x == 0 or 10 // x > 1:\n"
+            "    print 100\n"
+            "else:\n"
+            "    print 200\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "100\n");
+        assert(err.str().empty());
+    }
+
+    // Short-circuiting in while loop condition
+    {
+        std::string_view code = 
+            "i: int = 5\n"
+            "while i > 0 and 10 // i >= 2:\n"
+            "    i = i - 1\n"
+            "print i\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "0\n");
+        assert(err.str().empty());
+    }
+
+    // Comprehensive multi-feature program: Collatz sequence length
+    {
+        std::string_view code = 
+            "n: int = 6\n"
+            "steps: int = 0\n"
+            "while n != 1:\n"
+            "    if n % 2 == 0:\n"
+            "        n = n // 2\n"
+            "    else:\n"
+            "        n = 3 * n + 1\n"
+            "    steps = steps + 1\n"
+            "print steps\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 (8 steps)
+        assert(out.str() == "8\n");
+        assert(err.str().empty());
+    }
+
+    // Comprehensive multi-feature program: Sum multiples of 3 or 5 using while, if, modulo, and logical OR
+    {
+        std::string_view code = 
+            "total: int = 0\n"
+            "i: int = 1\n"
+            "while i <= 10:\n"
+            "    if i % 3 == 0 or i % 5 == 0:\n"
+            "        total = total + i\n"
+            "    i = i + 1\n"
+            "print total\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // Multiples of 3 or 5 in [1..10]: 3 + 5 + 6 + 9 + 10 = 33
+        assert(out.str() == "33\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_control_flow_integration passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_interpreter_tests() {
@@ -1735,6 +2472,8 @@ void run_interpreter_tests() {
     test_interpreter_binary_multiply_errors();
     test_interpreter_binary_int_divide();
     test_interpreter_binary_int_divide_errors();
+    test_interpreter_binary_modulo();
+    test_interpreter_binary_modulo_errors();
     test_interpreter_binary_equal();
     test_interpreter_binary_not_equal();
     test_interpreter_binary_greater();
@@ -1750,10 +2489,16 @@ void run_interpreter_tests() {
     test_interpreter_complex_expressions();
     test_interpreter_multiple_expressions_and_halt_on_error();
 
-    // New tests for statements, environment, and program execution
+    // Statement, environment, and basic program execution
     test_interpreter_environment_unit();
     test_interpreter_var_decl_and_assign_stmts();
     test_interpreter_expression_statement();
     test_interpreter_runtime_errors();
     test_interpreter_integration_programs();
+
+    // Control flow unit and integration tests
+    test_interpreter_if_statement();
+    test_interpreter_while_statement();
+    test_interpreter_for_statement();
+    test_interpreter_control_flow_integration();
 }
