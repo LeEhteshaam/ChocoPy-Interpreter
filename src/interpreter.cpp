@@ -20,11 +20,11 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                 },
                 [this](const varDecl& v) {
                     Value result = eval(*v.expression);
-                    env.define(v.identifier, v.type, result);
+                    env->define(v.identifier, v.type, result);
                 },
                 [this](const assignStmt& a) {
                     Value result = eval(*a.value);
-                    env.assign(a.name, result);
+                    env->assign(a.name, result);
                 },
                 [this, &out, &err](const ifStmt& f) {
                     Value branchCondition = eval(*f.condition);
@@ -44,7 +44,7 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     std::visit(overloaded {
                         [this, &fl, &out, &err](const std::string& str_val) {
                             for (char c : str_val) {
-                                env.assign(fl.loopVar, std::string(1, c));
+                                env->assign(fl.loopVar, std::string(1, c));
                                 interpret(fl.body, out, err); 
                             }
                         },
@@ -53,7 +53,7 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                         }
                     }, iterable);
                 },
-                [this, &out, &err](const returnStmt& r) {
+                [this](const returnStmt& r) {
                     // use stack unwinding for return values (performance is already tanked by tree-walking approach lol)
                     Value val = eval(*r.expression);
                     throw ReturnException(val);
@@ -85,7 +85,7 @@ Value Interpreter::eval(const expr& expression) {
                 [](std::monostate val) -> Value { return val; }
             }, l.val);
         }, 
-        [this] (const varExpr& v) -> Value { return env.get(v.name); },
+        [this] (const varExpr& v) -> Value { return env->get(v.name); },
         [this] (const unary& u) -> Value { return evalUnary(u); }, 
         [this] (const grouping& g) -> Value { return eval(*g.expression); },
         [this] (const binary& b) -> Value { return evalBinary(b); }

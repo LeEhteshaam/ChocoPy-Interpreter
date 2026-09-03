@@ -18,7 +18,7 @@ public:
 
 class Interpreter {
 private:
-    Environment env;
+    std::shared_ptr<Environment> env = std::make_shared<Environment>(); 
     std::string stringify(const Value& val);
     Value eval(const expr& expression);
     Value evalUnary(const unary& u);
