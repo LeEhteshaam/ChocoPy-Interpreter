@@ -2454,6 +2454,397 @@ void test_interpreter_control_flow_integration() {
     std::cout << "  test_interpreter_control_flow_integration passed!\n";
 }
 
+// --- Function Definition, Execution, Recursion, and Closure Tests ---
+
+void test_interpreter_function_definition_and_call() {
+    // Constant returning function
+    {
+        std::string_view code = 
+            "def get_answer() -> int:\n"
+            "    return 42\n"
+            "print get_answer()\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "42\n");
+        assert(err.str().empty());
+    }
+
+    // Function taking multiple parameters with arithmetic
+    {
+        std::string_view code = 
+            "def calc(a: int, b: int, c: int) -> int:\n"
+            "    return a * b + c\n"
+            "print calc(3, 4, 5)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "17\n");
+        assert(err.str().empty());
+    }
+
+    // String manipulation function
+    {
+        std::string_view code = 
+            "def greet(name: str) -> str:\n"
+            "    return \"Hello, \" + name\n"
+            "print greet(\"ChocoPy\")\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "\"Hello, \"\"ChocoPy\"\n");
+        assert(err.str().empty());
+    }
+
+    // Boolean function with if-else logic
+    {
+        std::string_view code = 
+            "def is_positive(x: int) -> bool:\n"
+            "    if x > 0:\n"
+            "        return True\n"
+            "    else:\n"
+            "        return False\n"
+            "print is_positive(10)\n"
+            "print is_positive(-5)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "True\nFalse\n");
+        assert(err.str().empty());
+    }
+
+    // Void function with implicit None return
+    {
+        std::string_view code = 
+            "def do_nothing():\n"
+            "    x: int = 1\n"
+            "print do_nothing()\n";
+        // Note: variable declarations inside blocks throw ParseError in block(), so we use print or expression
+    }
+    {
+        std::string_view code = 
+            "def do_print(n: int):\n"
+            "    print n\n"
+            "print do_print(100)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "100\nNone\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_function_definition_and_call passed!\n";
+}
+
+void test_interpreter_recursive_functions() {
+    // Recursive Fibonacci sequence
+    {
+        std::string_view code = 
+            "def fib(n: int) -> int:\n"
+            "    if n <= 0:\n"
+            "        return 0\n"
+            "    elif n == 1:\n"
+            "        return 1\n"
+            "    else:\n"
+            "        return fib(n - 1) + fib(n - 2)\n"
+            "print fib(0)\n"
+            "print fib(1)\n"
+            "print fib(2)\n"
+            "print fib(3)\n"
+            "print fib(7)\n"
+            "print fib(10)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(7)=13, fib(10)=55
+        assert(out.str() == "0\n1\n1\n2\n13\n55\n");
+        assert(err.str().empty());
+    }
+
+    // Recursive Factorial computation
+    {
+        std::string_view code = 
+            "def fact(n: int) -> int:\n"
+            "    if n <= 1:\n"
+            "        return 1\n"
+            "    return n * fact(n - 1)\n"
+            "print fact(1)\n"
+            "print fact(5)\n"
+            "print fact(6)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // fact(1)=1, fact(5)=120, fact(6)=720
+        assert(out.str() == "1\n120\n720\n");
+        assert(err.str().empty());
+    }
+
+    // Recursive GCD (Euclidean algorithm)
+    {
+        std::string_view code = 
+            "def gcd(a: int, b: int) -> int:\n"
+            "    if b == 0:\n"
+            "        return a\n"
+            "    return gcd(b, a % b)\n"
+            "print gcd(48, 18)\n"
+            "print gcd(100, 25)\n"
+            "print gcd(17, 13)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        // gcd(48, 18)=6, gcd(100, 25)=25, gcd(17, 13)=1
+        assert(out.str() == "6\n25\n1\n");
+        assert(err.str().empty());
+    }
+
+    // Mutual recursion (is_even and is_odd)
+    {
+        std::string_view code = 
+            "def is_even(n: int) -> bool:\n"
+            "    if n == 0:\n"
+            "        return True\n"
+            "    return is_odd(n - 1)\n"
+            "def is_odd(n: int) -> bool:\n"
+            "    if n == 0:\n"
+            "        return False\n"
+            "    return is_even(n - 1)\n"
+            "print is_even(4)\n"
+            "print is_even(7)\n"
+            "print is_odd(7)\n"
+            "print is_odd(8)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "True\nFalse\nTrue\nFalse\n");
+        assert(err.str().empty());
+    }
+
+    // Recursive Power function
+    {
+        std::string_view code = 
+            "def power(base: int, exp: int) -> int:\n"
+            "    if exp == 0:\n"
+            "        return 1\n"
+            "    return base * power(base, exp - 1)\n"
+            "print power(2, 5)\n"
+            "print power(3, 4)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "32\n81\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_recursive_functions passed!\n";
+}
+
+void test_interpreter_closures_and_scope() {
+    // Nested function accessing outer parameter (lexical closure)
+    {
+        std::string_view code = 
+            "def make_adder(x: int) -> int:\n"
+            "    def add_ten(y: int) -> int:\n"
+            "        return x + y\n"
+            "    return add_ten(10)\n"
+            "print make_adder(5)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "15\n");
+        assert(err.str().empty());
+    }
+
+    // Global variable shadowing inside function scope
+    {
+        std::string_view code = 
+            "x: int = 100\n"
+            "def shadow(x: int) -> int:\n"
+            "    return x * 2\n"
+            "print shadow(5)\n"
+            "print x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "10\n100\n");
+        assert(err.str().empty());
+    }
+
+    // Multi-level nested function scope
+    {
+        std::string_view code = 
+            "def f1(a: int) -> int:\n"
+            "    def f2(b: int) -> int:\n"
+            "        def f3(c: int) -> int:\n"
+            "            return a + b + c\n"
+            "        return f3(30)\n"
+            "    return f2(20)\n"
+            "print f1(10)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "60\n");
+        assert(err.str().empty());
+    }
+
+    std::cout << "  test_interpreter_closures_and_scope passed!\n";
+}
+
+void test_interpreter_function_runtime_errors() {
+    // Calling undefined function
+    {
+        std::string_view code = "unknown_func(1)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Undefined variable 'unknown_func' on line 1") != std::string::npos);
+    }
+
+    // Argument count mismatch: too few arguments
+    {
+        std::string_view code = 
+            "def add(a: int, b: int) -> int:\n"
+            "    return a + b\n"
+            "print add(1)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Expected 2 arguments but got 1 on line 3") != std::string::npos);
+    }
+
+    // Argument count mismatch: too many arguments
+    {
+        std::string_view code = 
+            "def add(a: int, b: int) -> int:\n"
+            "    return a + b\n"
+            "print add(1, 2, 3)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Expected 2 arguments but got 3 on line 3") != std::string::npos);
+    }
+
+    // Parameter type mismatch on call
+    {
+        std::string_view code = 
+            "def double(x: int) -> int:\n"
+            "    return x * 2\n"
+            "print double(\"bad\")\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Type mismatch on line 1") != std::string::npos);
+    }
+
+    // Return type mismatch: declared int but returns str
+    {
+        std::string_view code = 
+            "def bad_ret() -> int:\n"
+            "    return \"string_not_int\"\n"
+            "print bad_ret()\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Function 'bad_ret' expected return type on line 1") != std::string::npos);
+    }
+
+    // Function redefinition error
+    {
+        std::string_view code = 
+            "def f() -> int:\n"
+            "    return 1\n"
+            "def f() -> int:\n"
+            "    return 2\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str().empty());
+        assert(err.str().find("Function 'f' is already defined on line 3") != std::string::npos);
+    }
+
+    std::cout << "  test_interpreter_function_runtime_errors passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_interpreter_tests() {
@@ -2501,4 +2892,10 @@ void run_interpreter_tests() {
     test_interpreter_while_statement();
     test_interpreter_for_statement();
     test_interpreter_control_flow_integration();
+
+    // Function definition, call, recursion, closure, and error tests
+    test_interpreter_function_definition_and_call();
+    test_interpreter_recursive_functions();
+    test_interpreter_closures_and_scope();
+    test_interpreter_function_runtime_errors();
 }
