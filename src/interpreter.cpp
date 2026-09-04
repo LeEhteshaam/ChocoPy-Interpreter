@@ -12,22 +12,22 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
     try {
         for (const auto& statement : statements) {
             std::visit(overloaded {
-                [this](const exprStmt& e) { 
-                    eval(*e.expression); 
+                [this, &out, &err](const exprStmt& e) { 
+                    eval(*e.expression, out, err); 
                 },
-                [this, &out](const printStmt& p) { 
-                    out << stringify(eval(*p.expression)) << "\n"; 
+                [this, &out, &err](const printStmt& p) { 
+                    out << stringify(eval(*p.expression, out, err)) << "\n"; 
                 },
-                [this](const varDecl& v) {
-                    Value result = eval(*v.expression);
+                [this, &out, &err](const varDecl& v) {
+                    Value result = eval(*v.expression, out, err);
                     env->define(v.identifier, v.type, result);
                 },
-                [this](const assignStmt& a) {
-                    Value result = eval(*a.value);
+                [this, &out, &err](const assignStmt& a) {
+                    Value result = eval(*a.value, out, err);
                     env->assign(a.name, result);
                 },
                 [this, &out, &err](const ifStmt& f) {
-                    Value branchCondition = eval(*f.condition);
+                    Value branchCondition = eval(*f.condition, out, err);
                     if (isTruthy(branchCondition)) {
                         interpret(f.ifBranch, out, err);
                     } else {
@@ -35,12 +35,12 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     }
                 },
                 [this, &out, &err](const whileStmt& w) {
-                    while (isTruthy(eval(*w.condition))) {
+                    while (isTruthy(eval(*w.condition, out, err))) {
                         interpret(w.body, out, err);
                     }
                 },
                 [this, &out, &err](const forStmt& fl) {
-                    Value iterable = eval(*fl.iterable);
+                    Value iterable = eval(*fl.iterable, out, err);
                     std::visit(overloaded {
                         [this, &fl, &out, &err](const std::string& str_val) {
                             for (char c : str_val) {
@@ -53,60 +53,13 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                         }
                     }, iterable);
                 },
-                [this](const returnStmt& r) {
+                [this, &out, &err](const returnStmt& r) {
                     // use stack unwinding for return values (performance is already tanked by tree-walking approach lol)
-                    Value val = eval(*r.expression);
+                    Value val = eval(*r.expression, out, err);
                     throw ReturnException(val);
                 },
                 [this](const funcDef& fd) {
-                    env->addFunc(f.name, f, this->env);
-                },
-                [this, &out, &err](const callExpr& c) {
-                    struct closure func = env->getFunc(c.name);
-
-                    if (c.arguments.size() != func.func.params.size()) {
-                        throw std::runtime_error(std::format("RuntimeError: Expected {} arguments but got {} on line {}", 
-                        func.func.parameters.size(), c.arguments.size(), c.functionName.line));
-                    }
-
-                    std::vector<Value> evaluatedArgs;
-                    for (const auto& arg : c.arguments) {
-                        evaluatedArgs.push_back(eval(arg)); 
-                    }
-                    
-                    auto localEnv = std::make_shared<Environment>(func.closureEnv);
-
-                    for (size_t i = 0; i < evaluatedArgs.size(); ++i) {
-                        localEnv->define(
-                        func.func.parameters[i].name, 
-                        func.func.parameters[i].type, 
-                        evaluatedArgs[i]);
-                    }
-
-                    auto previousEnv = this->env;
-                    this->env = localEnv;
-                    Value returnValue = std::monostate{};
-
-                    try {
-                        interpret(func.func.body, out, err); 
-                    } catch (const ReturnException& ret) {
-                        returnValue = ret.returnValue; 
-                    }
-                    
-                    this->env = previousEnv;
-                    TokenType actualReturnType = std::visit(overloaded{
-                        [](int) -> TokenType { return INT_TYPE; },
-                        [](const std::string&) -> TokenType { return STR_TYPE; },
-                        [](bool) -> TokenType { return BOOL_TYPE; },
-                        [](std::monostate) -> TokenType { return NONE; }
-                    }, returnValue);
-
-                    if (actualReturnType != func.func.returnType) {
-                        throw std::runtime_error(std::format("RuntimeError: Function '{}' expected return type on line {}", 
-                            func.func.name.lexeme, func.func.name.line));
-                    }
-
-                    return returnValue;
+                    env->addFunc(fd.name, fd, this->env);
                 }
             }, statement.node);
         }
@@ -124,7 +77,7 @@ std::string Interpreter::stringify(const Value& val) {
     }, val);
 }
 
-Value Interpreter::eval(const expr& expression) {
+Value Interpreter::eval(const expr& expression, std::ostream& out, std::ostream& err) {
     // match based on variant type 
     return std::visit(overloaded {
         [] (const literal& l) -> Value {
@@ -136,9 +89,56 @@ Value Interpreter::eval(const expr& expression) {
             }, l.val);
         }, 
         [this] (const varExpr& v) -> Value { return env->get(v.name); },
-        [this] (const unary& u) -> Value { return evalUnary(u); }, 
-        [this] (const grouping& g) -> Value { return eval(*g.expression); },
-        [this] (const binary& b) -> Value { return evalBinary(b); }
+        [this, &out, &err] (const callExpr& c) -> Value {
+            struct closure func = env->getFunc(c.name);
+
+            if (c.arguments.size() != func.func.params.size()) {
+                throw std::runtime_error(std::format("RuntimeError: Expected {} arguments but got {} on line {}", 
+                    func.func.params.size(), c.arguments.size(), c.name.line));
+            }
+
+            std::vector<Value> evaluatedArgs;
+            for (const auto& arg : c.arguments) {
+                evaluatedArgs.push_back(eval(arg, out, err)); 
+            }
+            
+            auto localEnv = std::make_shared<Environment>(func.closureEnv);
+
+            for (size_t i = 0; i < evaluatedArgs.size(); ++i) {
+                localEnv->define(
+                    func.func.params[i].name, 
+                    func.func.params[i].type, 
+                    evaluatedArgs[i]);
+            }
+
+            auto previousEnv = this->env;
+            this->env = localEnv;
+            Value returnValue = std::monostate{};
+
+            try {
+                interpret(*func.func.body, out, err); 
+            } catch (const ReturnException& ret) {
+                returnValue = ret.returnValue; 
+            }
+            
+            this->env = previousEnv;
+            TokenType actualReturnType = std::visit(overloaded{
+                [](int) -> TokenType { return INT_TYPE; },
+                [](const std::string&) -> TokenType { return STR_TYPE; },
+                [](bool) -> TokenType { return BOOL_TYPE; },
+                [](std::monostate) -> TokenType { return NONE; }
+            }, returnValue);
+
+            if (actualReturnType != func.func.returnType) {
+                throw std::runtime_error(std::format("RuntimeError: Function '{}' expected return type on line {}", 
+                    func.func.name.lexeme, func.func.name.line));
+            }
+
+            return returnValue;
+        },
+        [this, &out, &err] (const unary& u) -> Value { return evalUnary(u, out, err); }, 
+        [this, &out, &err] (const grouping& g) -> Value { return eval(*g.expression, out, err); },
+        [this, &out, &err] (const binary& b) -> Value { return evalBinary(b, out, err); }
     }, expression.node);
 }
 
@@ -151,8 +151,8 @@ bool Interpreter::isTruthy(const Value& val) {
     }, val);
 }
 
-Value Interpreter::evalUnary(const unary& u) {
-    const Value right = eval(*u.right);
+Value Interpreter::evalUnary(const unary& u, std::ostream& out, std::ostream& err) {
+    const Value right = eval(*u.right, out, err);
     TokenType opType = u.op.type;
     int line = u.op.line;
 
@@ -168,21 +168,21 @@ Value Interpreter::evalUnary(const unary& u) {
     }
 }
 
-Value Interpreter::evalBinary(const binary& b) {
+Value Interpreter::evalBinary(const binary& b, std::ostream& out, std::ostream& err) {
     TokenType opType = b.op.type;
-    const Value left_val = eval(*b.left);
+    const Value left_val = eval(*b.left, out, err);
     int line = b.op.line;
 
     if (opType == AND) {
         if (!isTruthy(left_val)) return left_val;
-        return eval(*b.right);
+        return eval(*b.right, out, err);
 
     } else if (opType == OR) {
         if (isTruthy(left_val)) return left_val; 
-        return eval(*b.right);
+        return eval(*b.right, out, err);
     }
 
-    const Value right_val = eval(*b.right);
+    const Value right_val = eval(*b.right, out, err);
 
     if (opType == ADD) {
         return std::visit(overloaded{

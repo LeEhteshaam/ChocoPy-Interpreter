@@ -87,7 +87,7 @@ struct funcDef {
     Token name;
     std::vector<param> params;
     TokenType returnType;
-    std::vector<stmt> body;
+    std::shared_ptr<std::vector<stmt>> body;
 };
 struct stmt {
     std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef> node;

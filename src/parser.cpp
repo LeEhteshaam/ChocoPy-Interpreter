@@ -188,7 +188,7 @@ struct stmt Parser::functionDefinition() {
         std::move(name), 
         std::move(parameters), 
         returnType, 
-        std::move(functionBody) 
+        std::make_shared<std::vector<stmt>>(std::move(functionBody))
     }};
 }
 
