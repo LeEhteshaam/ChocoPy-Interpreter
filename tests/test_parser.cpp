@@ -1975,6 +1975,358 @@ void test_parser_for_statement() {
     std::cout << "  test_parser_for_statement passed!\n";
 }
 
+// --- Function Definition, Return, and Call Expression Parser Tests ---
+
+void test_parser_function_definition() {
+    // Basic function with parameters and return type
+    {
+        std::string_view code = 
+            "def add(a: int, b: int) -> int:\n"
+            "    return a + b\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        assert(fn.name.lexeme == "add");
+        assert(fn.params.size() == 2);
+        assert(fn.params[0].name.lexeme == "a" && fn.params[0].type == INT_TYPE);
+        assert(fn.params[1].name.lexeme == "b" && fn.params[1].type == INT_TYPE);
+        assert(fn.returnType == INT_TYPE);
+        assert(fn.body->size() == 1);
+        assert(std::holds_alternative<returnStmt>((*fn.body)[0].node));
+    }
+
+    // Function with no parameters and no return type (defaults to NONE)
+    {
+        std::string_view code = 
+            "def greet():\n"
+            "    print \"hello\"\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        assert(fn.name.lexeme == "greet");
+        assert(fn.params.empty());
+        assert(fn.returnType == NONE);
+        assert(fn.body->size() == 1);
+        assert(std::holds_alternative<printStmt>((*fn.body)[0].node));
+    }
+
+    // Function with str and bool parameter types and str return type
+    {
+        std::string_view code = 
+            "def format_val(flag: bool, label: str) -> str:\n"
+            "    if flag:\n"
+            "        return label\n"
+            "    return \"\"\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        assert(fn.name.lexeme == "format_val");
+        assert(fn.params.size() == 2);
+        assert(fn.params[0].type == BOOL_TYPE);
+        assert(fn.params[1].type == STR_TYPE);
+        assert(fn.returnType == STR_TYPE);
+        assert(fn.body->size() == 2);
+        assert(std::holds_alternative<ifStmt>((*fn.body)[0].node));
+        assert(std::holds_alternative<returnStmt>((*fn.body)[1].node));
+    }
+
+    // Nested function definition (closure parsing)
+    {
+        std::string_view code = 
+            "def outer(x: int) -> int:\n"
+            "    def inner(y: int) -> int:\n"
+            "        return x + y\n"
+            "    return inner(10)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& outer_fn = std::get<funcDef>(ast[0].node);
+        assert(outer_fn.name.lexeme == "outer");
+        assert(outer_fn.body->size() == 2);
+        assert(std::holds_alternative<funcDef>((*outer_fn.body)[0].node));
+        const auto& inner_fn = std::get<funcDef>((*outer_fn.body)[0].node);
+        assert(inner_fn.name.lexeme == "inner");
+        assert(std::holds_alternative<returnStmt>((*outer_fn.body)[1].node));
+    }
+
+    // Error: Missing function name
+    {
+        std::string_view code = 
+            "def ():\n"
+            "    return 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected function name") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing '(' after function name
+    {
+        std::string_view code = 
+            "def foo:\n"
+            "    return 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a '('") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing ':' in parameter definition
+    {
+        std::string_view code = 
+            "def foo(x int):\n"
+            "    return x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a ':'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Invalid parameter type
+    {
+        std::string_view code = 
+            "def foo(x: invalid):\n"
+            "    return x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Invalid type") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing ')' after parameter list
+    {
+        std::string_view code = 
+            "def foo(x: int:\n"
+            "    return x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a ')'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Invalid return type after '->'
+    {
+        std::string_view code = 
+            "def foo() -> invalid:\n"
+            "    return 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Invalid return type") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing colon before function block
+    {
+        std::string_view code = 
+            "def foo() -> int\n"
+            "    return 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a ':'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_function_definition passed!\n";
+}
+
+void test_parser_return_statement() {
+    // Return integer literal
+    {
+        std::string_view code = 
+            "def f() -> int:\n"
+            "    return 42\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        const auto& ret = std::get<returnStmt>((*fn.body)[0].node);
+        assert(std::holds_alternative<literal>(ret.expression->node));
+        assert(std::get<int>(std::get<literal>(ret.expression->node).val) == 42);
+    }
+
+    // Return binary expression
+    {
+        std::string_view code = 
+            "def f(a: int, b: int) -> int:\n"
+            "    return a * b + 1\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        const auto& ret = std::get<returnStmt>((*fn.body)[0].node);
+        assert(std::holds_alternative<binary>(ret.expression->node));
+    }
+
+    // Return function call expression
+    {
+        std::string_view code = 
+            "def f(n: int) -> int:\n"
+            "    return fib(n - 1)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        const auto& ret = std::get<returnStmt>((*fn.body)[0].node);
+        assert(std::holds_alternative<callExpr>(ret.expression->node));
+        const auto& call = std::get<callExpr>(ret.expression->node);
+        assert(call.name.lexeme == "fib");
+        assert(call.arguments.size() == 1);
+    }
+
+    std::cout << "  test_parser_return_statement passed!\n";
+}
+
+void test_parser_call_expression() {
+    // Standalone call as expression statement (0 args, 1 arg, multiple args)
+    {
+        std::string_view code = 
+            "foo()\n"
+            "bar(1)\n"
+            "baz(1, \"two\", True)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 3);
+
+        // foo()
+        assert(std::holds_alternative<exprStmt>(ast[0].node));
+        const auto& e0 = std::get<exprStmt>(ast[0].node);
+        assert(std::holds_alternative<callExpr>(e0.expression->node));
+        const auto& call0 = std::get<callExpr>(e0.expression->node);
+        assert(call0.name.lexeme == "foo");
+        assert(call0.arguments.empty());
+
+        // bar(1)
+        const auto& e1 = std::get<exprStmt>(ast[1].node);
+        assert(std::holds_alternative<callExpr>(e1.expression->node));
+        const auto& call1 = std::get<callExpr>(e1.expression->node);
+        assert(call1.name.lexeme == "bar");
+        assert(call1.arguments.size() == 1);
+
+        // baz(1, "two", True)
+        const auto& e2 = std::get<exprStmt>(ast[2].node);
+        assert(std::holds_alternative<callExpr>(e2.expression->node));
+        const auto& call2 = std::get<callExpr>(e2.expression->node);
+        assert(call2.name.lexeme == "baz");
+        assert(call2.arguments.size() == 3);
+    }
+
+    // Nested call expressions: add(fib(5), fib(6))
+    {
+        std::string_view code = "print add(fib(5), fib(6))\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<printStmt>(ast[0].node));
+        const auto& pr = std::get<printStmt>(ast[0].node);
+        assert(std::holds_alternative<callExpr>(pr.expression->node));
+        const auto& outer_call = std::get<callExpr>(pr.expression->node);
+        assert(outer_call.name.lexeme == "add");
+        assert(outer_call.arguments.size() == 2);
+        assert(std::holds_alternative<callExpr>(outer_call.arguments[0].node));
+        assert(std::holds_alternative<callExpr>(outer_call.arguments[1].node));
+        assert(std::get<callExpr>(outer_call.arguments[0].node).name.lexeme == "fib");
+        assert(std::get<callExpr>(outer_call.arguments[1].node).name.lexeme == "fib");
+    }
+
+    // Call expression inside arithmetic and comparison expressions
+    {
+        std::string_view code = 
+            "res: int = 0\n"
+            "res = fib(n - 1) + fib(n - 2)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 2);
+        assert(std::holds_alternative<assignStmt>(ast[1].node));
+        const auto& asgn = std::get<assignStmt>(ast[1].node);
+        assert(std::holds_alternative<binary>(asgn.value->node));
+        const auto& bin = std::get<binary>(asgn.value->node);
+        assert(bin.op.type == ADD);
+        assert(std::holds_alternative<callExpr>(bin.left->node));
+        assert(std::holds_alternative<callExpr>(bin.right->node));
+    }
+
+    // Error: Missing closing paren in call expression
+    {
+        std::string_view code = "foo(1, 2\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a ')'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_call_expression passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_parser_tests() {
@@ -2006,4 +2358,9 @@ void run_parser_tests() {
     test_parser_if_statement();
     test_parser_while_statement();
     test_parser_for_statement();
+
+    // Function definition, return, and call parsing
+    test_parser_function_definition();
+    test_parser_return_statement();
+    test_parser_call_expression();
 }
