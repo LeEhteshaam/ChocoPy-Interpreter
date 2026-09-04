@@ -9,6 +9,8 @@
 
 using Value = std::variant<std::string, int, bool, std::monostate>;
 
+class Environment;
+
 struct closure {
     funcDef func;
     std::shared_ptr<Environment> closureEnv;
@@ -26,7 +28,7 @@ class Environment {
         void assign(const Token& nameToken, Value val);
         Value get(const Token& token);
         struct closure getFunc(const Token& nameToken);
-        void addFunc(const Token& nameToken, funcDef bdy);
+        void addFunc(const Token& nameToken, funcDef func, std::shared_ptr<Environment> env);
         Environment() = default;         
         Environment(std::shared_ptr<Environment> par) {
             parent = par;

@@ -51,7 +51,7 @@ private:
     struct expr term();
     struct expr factor();
     struct expr unary();
-    struct expr finishCall(); 
+    struct expr finishCall(Token name); 
     struct expr primary();
 
 public: 

@@ -92,7 +92,7 @@ struct stmt Parser::statement() {
         return assignStatement();
     }
 
-    if (check(IDENTIFIER) && peekNext().type == LEFT_PAREN) {
+    if (match({DEF})) {
         return functionDefinition();
     }
 
@@ -432,22 +432,22 @@ struct expr Parser::unary() {
 }
 
 struct expr Parser::finishCall(Token name) {
-    std::vector<param> arguments;
+    std::vector<expr> arguments;
 
     if (!check(RIGHT_PAREN)) {
          do {
             if (isAtEnd()) {
-                throw std::runtime_error("ParseError: Unexpected end of file while parsing function arguments on line {}", previous().line);
+                throw std::runtime_error(std::format("ParseError: Unexpected end of file while parsing function arguments on line {}", previous().line));
             }
 
             arguments.push_back(expression());
-        } while(match(COMMA));
+        } while(match({COMMA}));
     }
 
     consume(RIGHT_PAREN, std::format("ParseError: Expected a ')' on line {}", previous().line));
     return expr { callExpr { 
         name,
-        arguments
+        std::move(arguments)
     }}; 
 }
 
@@ -456,12 +456,12 @@ struct expr Parser::primary() {
     if (match({TRUE})) return expr { literal { previous(), true } }; 
     if (match({NONE})) return expr { literal { previous(), std::monostate{} } };
     if (match({IDENTIFIER})) {
-
-        if (match{LEFT_PAREN}) {
-            return finishCall(previous());
+        Token id = previous();
+        if (match({LEFT_PAREN})) {
+            return finishCall(id);
         }
 
-        return expr { varExpr { previous() } };
+        return expr { varExpr { id } };
     }
     if (match({INT, STR})) {
         Token res = previous();
