@@ -10,6 +10,7 @@ add_executable(interp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ast_printer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/resolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/interpreter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/environment.cpp
 )
@@ -20,10 +21,12 @@ add_executable(run_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_lexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ast_printer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_resolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interpreter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lexer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ast_printer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/resolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/interpreter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/environment.cpp
 )

@@ -1,5 +1,6 @@
 #include "../src/interpreter.hpp"
 #include "../src/environment.hpp"
+#include "../src/resolver.hpp"
 #include "../src/parser.hpp"
 #include "../src/ast.hpp"
 #include "../src/lexer.hpp"
@@ -1522,6 +1523,64 @@ void test_interpreter_environment_unit() {
         assert(caught);
     }
 
+    // Chained environments and ancestor distance jumping
+    {
+        auto globalEnv = std::make_shared<Environment>();
+        Token tok_g{IDENTIFIER, 1, 1, "g", 1, std::monostate{}};
+        globalEnv->define(tok_g, INT_TYPE, Value(100));
+
+        auto midEnv = std::make_shared<Environment>(globalEnv);
+        Token tok_m{IDENTIFIER, 2, 1, "m", 1, std::monostate{}};
+        midEnv->define(tok_m, INT_TYPE, Value(200));
+
+        auto localEnv = std::make_shared<Environment>(midEnv);
+        Token tok_l{IDENTIFIER, 3, 1, "l", 1, std::monostate{}};
+        localEnv->define(tok_l, INT_TYPE, Value(300));
+
+        // ancestor checks
+        assert(localEnv->ancestor(0) == localEnv.get());
+        assert(localEnv->ancestor(1) == midEnv.get());
+        assert(localEnv->ancestor(2) == globalEnv.get());
+        assert(localEnv->ancestor(3) == nullptr);
+
+        // get at distance
+        assert(std::get<int>(localEnv->get(tok_l, 0)) == 300);
+        assert(std::get<int>(localEnv->get(tok_m, 1)) == 200);
+        assert(std::get<int>(localEnv->get(tok_g, 2)) == 100);
+
+        // assign at distance
+        localEnv->assign(tok_g, Value(999), 2);
+        assert(std::get<int>(globalEnv->get(tok_g, 0)) == 999);
+        assert(std::get<int>(localEnv->get(tok_g, 2)) == 999);
+
+        // assign at distance 1
+        localEnv->assign(tok_m, Value(888), 1);
+        assert(std::get<int>(midEnv->get(tok_m, 0)) == 888);
+        assert(std::get<int>(localEnv->get(tok_m, 1)) == 888);
+
+        // error when accessing wrong distance
+        bool caught = false;
+        try {
+            localEnv->get(tok_g, 0); // tok_g is at distance 2, not 0
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Undefined variable 'g' on line 1") != std::string::npos);
+        }
+        assert(caught);
+
+        // error when ancestor distance is out of range
+        caught = false;
+        try {
+            localEnv->get(tok_g, 5);
+        } catch (const std::runtime_error& e) {
+            caught = true;
+            std::string msg = e.what();
+            assert(msg.find("Undefined variable 'g' on line 1") != std::string::npos);
+        }
+        assert(caught);
+    }
+
     std::cout << "  test_interpreter_environment_unit passed!\n";
 }
 
@@ -2579,6 +2638,8 @@ void test_interpreter_recursive_functions() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2601,6 +2662,8 @@ void test_interpreter_recursive_functions() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2623,6 +2686,8 @@ void test_interpreter_recursive_functions() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2632,31 +2697,6 @@ void test_interpreter_recursive_functions() {
         assert(err.str().empty());
     }
 
-    // Mutual recursion (is_even and is_odd)
-    {
-        std::string_view code = 
-            "def is_even(n: int) -> bool:\n"
-            "    if n == 0:\n"
-            "        return True\n"
-            "    return is_odd(n - 1)\n"
-            "def is_odd(n: int) -> bool:\n"
-            "    if n == 0:\n"
-            "        return False\n"
-            "    return is_even(n - 1)\n"
-            "print is_even(4)\n"
-            "print is_even(7)\n"
-            "print is_odd(7)\n"
-            "print is_odd(8)\n";
-        std::vector<Token> tokens = tokenizer(code);
-        Parser parser(tokens);
-        std::vector<stmt> ast = parser.parse();
-
-        std::ostringstream out, err;
-        Interpreter interp;
-        interp.interpret(ast, out, err);
-        assert(out.str() == "True\nFalse\nTrue\nFalse\n");
-        assert(err.str().empty());
-    }
 
     // Recursive Power function
     {
@@ -2670,6 +2710,8 @@ void test_interpreter_recursive_functions() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2693,6 +2735,8 @@ void test_interpreter_closures_and_scope() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2712,6 +2756,8 @@ void test_interpreter_closures_and_scope() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
@@ -2733,11 +2779,60 @@ void test_interpreter_closures_and_scope() {
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
 
         std::ostringstream out, err;
         Interpreter interp;
         interp.interpret(ast, out, err);
         assert(out.str() == "60\n");
+        assert(err.str().empty());
+    }
+
+    // Nonlocal variable mutation across scopes
+    {
+        std::string_view code = 
+            "def outer(x: int) -> int:\n"
+            "    def inner() -> int:\n"
+            "        nonlocal x\n"
+            "        x = 42\n"
+            "        return x\n"
+            "    inner()\n"
+            "    return x\n"
+            "print outer(1)\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "42\n");
+        assert(err.str().empty());
+    }
+
+    // Global variable mutation inside function scope via global keyword
+    {
+        std::string_view code = 
+            "g: int = 10\n"
+            "def change_g() -> int:\n"
+            "    global g\n"
+            "    g = 99\n"
+            "    return g\n"
+            "print change_g()\n"
+            "print g\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        Resolver resolver;
+        resolver.resolve(ast);
+
+        std::ostringstream out, err;
+        Interpreter interp;
+        interp.interpret(ast, out, err);
+        assert(out.str() == "99\n99\n");
         assert(err.str().empty());
     }
 

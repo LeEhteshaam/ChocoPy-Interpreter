@@ -1,9 +1,9 @@
 #include <iostream>
 
-// Declarations of test functions from other files
 void run_lexer_tests();
 void run_ast_printer_tests();
 void run_parser_tests();
+void run_resolver_tests();
 void run_interpreter_tests();
 
 int main() {
@@ -18,6 +18,9 @@ int main() {
     std::cout << "\n";
 
     run_parser_tests();
+    std::cout << "\n";
+
+    run_resolver_tests();
     std::cout << "\n";
 
     run_interpreter_tests();
