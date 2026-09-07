@@ -42,6 +42,8 @@ private:
     struct stmt forStatement();
     struct stmt returnStatement();
     struct stmt functionDefinition();
+    struct stmt globalStatement();
+    struct stmt nonlocalStatement();
     std::vector<stmt> block();
     struct expr expression();
     struct expr logicalOr();

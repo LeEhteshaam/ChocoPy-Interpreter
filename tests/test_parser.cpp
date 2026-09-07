@@ -2475,6 +2475,239 @@ void test_parser_call_expression() {
     std::cout << "  test_parser_call_expression passed!\n";
 }
 
+// --- Global Statement Parser Tests ---
+
+void test_parser_global_statement() {
+    // Basic global statement with newline
+    {
+        std::string_view code = "global x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<global>(ast[0].node));
+        const auto& g = std::get<global>(ast[0].node);
+        assert(g.name.lexeme == "x");
+        assert(g.name.type == IDENTIFIER);
+    }
+
+    // Global statement at EOF without newline
+    {
+        std::string_view code = "global my_var";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<global>(ast[0].node));
+        const auto& g = std::get<global>(ast[0].node);
+        assert(g.name.lexeme == "my_var");
+    }
+
+    // Multiple global statements in sequence
+    {
+        std::string_view code = 
+            "global a\n"
+            "global b\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 2);
+        assert(std::holds_alternative<global>(ast[0].node));
+        assert(std::get<global>(ast[0].node).name.lexeme == "a");
+        assert(std::holds_alternative<global>(ast[1].node));
+        assert(std::get<global>(ast[1].node).name.lexeme == "b");
+    }
+
+    // Global statement inside function definition
+    {
+        std::string_view code = 
+            "def foo():\n"
+            "    global count\n"
+            "    count = 10\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& fn = std::get<funcDef>(ast[0].node);
+        assert(fn.body->size() == 2);
+        assert(std::holds_alternative<global>((*fn.body)[0].node));
+        assert(std::get<global>((*fn.body)[0].node).name.lexeme == "count");
+        assert(std::holds_alternative<assignStmt>((*fn.body)[1].node));
+    }
+
+    // Error: Missing identifier after global
+    {
+        std::string_view code = "global 123\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected an identifier after global") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing newline after global declaration
+    {
+        std::string_view code = "global x y\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a new line after global declaration") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: EOF immediately after global
+    {
+        std::vector<Token> tokens = {
+            make_test_token(GLOBAL, "global", 1, 1),
+            make_test_token(END_OF_FILE, "", 1, 7)
+        };
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected an identifier after global") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_global_statement passed!\n";
+}
+
+// --- Nonlocal Statement Parser Tests ---
+
+void test_parser_nonlocal_statement() {
+    // Basic nonlocal statement with newline
+    {
+        std::string_view code = "nonlocal x\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<nonlocal>(ast[0].node));
+        const auto& nl = std::get<nonlocal>(ast[0].node);
+        assert(nl.name.lexeme == "x");
+        assert(nl.name.type == IDENTIFIER);
+    }
+
+    // Nonlocal statement at EOF without newline
+    {
+        std::string_view code = "nonlocal my_var";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<nonlocal>(ast[0].node));
+        const auto& nl = std::get<nonlocal>(ast[0].node);
+        assert(nl.name.lexeme == "my_var");
+    }
+
+    // Multiple nonlocal statements in sequence
+    {
+        std::string_view code = 
+            "nonlocal a\n"
+            "nonlocal b\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 2);
+        assert(std::holds_alternative<nonlocal>(ast[0].node));
+        assert(std::get<nonlocal>(ast[0].node).name.lexeme == "a");
+        assert(std::holds_alternative<nonlocal>(ast[1].node));
+        assert(std::get<nonlocal>(ast[1].node).name.lexeme == "b");
+    }
+
+    // Nonlocal statement inside nested function definition
+    {
+        std::string_view code = 
+            "def outer():\n"
+            "    def inner():\n"
+            "        nonlocal val\n"
+            "        val = 20\n"
+            "    return inner()\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        std::vector<stmt> ast = parser.parse();
+        assert(ast.size() == 1);
+        assert(std::holds_alternative<funcDef>(ast[0].node));
+        const auto& outer_fn = std::get<funcDef>(ast[0].node);
+        assert(outer_fn.body->size() == 2);
+        assert(std::holds_alternative<funcDef>((*outer_fn.body)[0].node));
+        const auto& inner_fn = std::get<funcDef>((*outer_fn.body)[0].node);
+        assert(inner_fn.body->size() == 2);
+        assert(std::holds_alternative<nonlocal>((*inner_fn.body)[0].node));
+        assert(std::get<nonlocal>((*inner_fn.body)[0].node).name.lexeme == "val");
+        assert(std::holds_alternative<assignStmt>((*inner_fn.body)[1].node));
+    }
+
+    // Error: Missing identifier after nonlocal
+    {
+        std::string_view code = "nonlocal 456\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected an identifier after nonlocal") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Missing newline after nonlocal declaration
+    {
+        std::string_view code = "nonlocal x y\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a new line after nonlocal declaration") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: EOF immediately after nonlocal
+    {
+        std::vector<Token> tokens = {
+            make_test_token(NONLOCAL, "nonlocal", 1, 1),
+            make_test_token(END_OF_FILE, "", 1, 9)
+        };
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected an identifier after nonlocal") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    std::cout << "  test_parser_nonlocal_statement passed!\n";
+}
+
 // --- Master Runner Function ---
 
 void run_parser_tests() {
@@ -2511,4 +2744,8 @@ void run_parser_tests() {
     test_parser_function_definition();
     test_parser_return_statement();
     test_parser_call_expression();
+
+    // Global and nonlocal statements
+    test_parser_global_statement();
+    test_parser_nonlocal_statement();
 }

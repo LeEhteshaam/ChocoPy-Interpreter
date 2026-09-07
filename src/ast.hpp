@@ -42,6 +42,7 @@ struct expr {
 struct exprStmt {
     std::unique_ptr<struct expr> expression;
 };
+
 struct printStmt {  
     std::unique_ptr<struct expr> expression;
 };
@@ -89,6 +90,15 @@ struct funcDef {
     TokenType returnType;
     std::shared_ptr<std::vector<stmt>> body;
 };
+
+struct global {
+    Token name;
+};
+
+struct nonlocal {
+    Token name;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef, global, nonlocal> node;
 };

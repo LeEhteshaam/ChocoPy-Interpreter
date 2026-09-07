@@ -60,7 +60,9 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                 },
                 [this](const funcDef& fd) {
                     env->addFunc(fd.name, fd, this->env);
-                }
+                },
+                [](const global&) {},
+                [](const nonlocal&){}
             }, statement.node);
         }
     } catch (const std::runtime_error& error) {

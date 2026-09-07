@@ -116,7 +116,35 @@ struct stmt Parser::statement() {
         return printStatement();
     } 
 
+    if (match({GLOBAL})) {
+        return globalStatement();
+    }
+
+    if (match({NONLOCAL})) {
+        return nonlocalStatement();
+    }
+
     return expressionStatement();
+}
+
+struct stmt Parser::globalStatement() {
+    Token name = consume(IDENTIFIER, std::format("ParseError: Expected an identifier after global on line {}", previous().line));
+
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a new line after global declaration on line {}", previous().line));
+    }
+
+    return stmt { global {name} };
+}
+
+struct stmt Parser::nonlocalStatement() {
+    Token name = consume(IDENTIFIER, std::format("ParseError: Expected an identifier after nonlocal on line {}", previous().line));
+
+    if (!isAtEnd()) {
+        consume(NEW_LINE, std::format("ParseError: Expected a new line after nonlocal declaration on line {}", previous().line));
+    }
+
+    return stmt { nonlocal {name} };
 }
 
 std::vector<stmt> Parser::block() {
