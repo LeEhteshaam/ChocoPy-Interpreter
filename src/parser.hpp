@@ -6,6 +6,7 @@
 #include <vector>
 #include <stdexcept>
 #include <initializer_list>
+#include <format>
 
 class ParseError : public std::runtime_error {
 public:

@@ -1,7 +1,6 @@
 #include "parser.hpp"
 #include <utility>
 #include <initializer_list>
-#include <format>
 #include <ranges>
 
 Parser::Parser(std::vector<Token> tokens) {
@@ -234,7 +233,10 @@ struct stmt Parser::returnStatement() {
         consume(NEW_LINE, std::format("ParseError: Expected a newline after return expression on line {}", prev.line));
     }
 
-    return stmt { returnStmt {std::make_unique<expr>(std::move(returnVal))} };
+    return stmt { returnStmt {
+        prev.line,
+        std::make_unique<expr>(std::move(returnVal))
+    }};
 }
 
 struct stmt Parser::forStatement() {

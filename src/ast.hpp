@@ -13,11 +13,13 @@ struct literal {
 
 struct varExpr {
     Token name;
+    int distance = 0;
 };
 
 struct callExpr {
     Token name; 
     std::vector<expr> arguments;
+    int distance = 0;
 };
 
 struct unary {
@@ -56,6 +58,7 @@ struct varDecl {
 struct assignStmt {
     Token name;
     std::unique_ptr<struct expr> value;
+    int distance = 0;
 };
 
 struct ifStmt {
@@ -73,9 +76,11 @@ struct forStmt {
     Token loopVar;
     std::unique_ptr<expr> iterable;
     std::vector<stmt> body;
+    int distance = 0;
 };
 
 struct returnStmt {
+    int line = 0;
     std::unique_ptr<expr> expression;
 };
 
