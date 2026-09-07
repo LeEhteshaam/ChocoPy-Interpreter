@@ -24,7 +24,7 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                 },
                 [this, &out, &err](const assignStmt& a) {
                     Value result = eval(*a.value, out, err);
-                    env->assign(a.name, result);
+                    env->assign(a.name, result, a.distance);
                 },
                 [this, &out, &err](const ifStmt& f) {
                     Value branchCondition = eval(*f.condition, out, err);
@@ -44,7 +44,7 @@ void Interpreter::interpret(const std::vector<stmt>& statements, std::ostream& o
                     std::visit(overloaded {
                         [this, &fl, &out, &err](const std::string& str_val) {
                             for (char c : str_val) {
-                                env->assign(fl.loopVar, std::string(1, c));
+                                env->assign(fl.loopVar, std::string(1, c), fl.distance);
                                 interpret(fl.body, out, err); 
                             }
                         },
@@ -90,9 +90,9 @@ Value Interpreter::eval(const expr& expression, std::ostream& out, std::ostream&
                 [](std::monostate val) -> Value { return val; }
             }, l.val);
         }, 
-        [this] (const varExpr& v) -> Value { return env->get(v.name); },
+        [this] (const varExpr& v) -> Value { return env->get(v.name, v.distance); },
         [this, &out, &err] (const callExpr& c) -> Value {
-            struct closure func = env->getFunc(c.name);
+            struct closure func = env->getFunc(c.name, c.distance);
 
             if (c.arguments.size() != func.func.params.size()) {
                 throw std::runtime_error(std::format("RuntimeError: Expected {} arguments but got {} on line {}", 

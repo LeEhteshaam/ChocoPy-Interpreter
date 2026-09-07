@@ -12,6 +12,17 @@ TokenType Environment::getTypeOfValue(const Value& val) {
     }, val);
 }
 
+Environment* Environment::ancestor(int distance) {
+    Environment* environment = this;
+    for (int i = 0; i < distance; ++i) {
+        if (environment->parent == nullptr) {
+            return nullptr;
+        }
+        environment = environment->parent.get();
+    }
+    return environment;
+}
+
 void Environment::define(const Token& nameToken, TokenType declaredType, Value val) {
     std::string name = std::string(nameToken.lexeme);
 
@@ -26,54 +37,53 @@ void Environment::define(const Token& nameToken, TokenType declaredType, Value v
     varMap[name] = val;
 }
 
-void Environment::assign(const Token& nameToken, Value val) {
+void Environment::assign(const Token& nameToken, Value val, int distance) {
+    Environment* target = ancestor(distance);
+    if (target == nullptr) {
+        throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", nameToken.lexeme, nameToken.line));
+    }
+
     std::string name = std::string(nameToken.lexeme);
 
-    if (!varMap.contains(name)) {
-        // call assign on parent environment 
-        if (parent != nullptr) {
-            parent->assign(nameToken, val);
-            return;
-        }
-
+    if (!target->varMap.contains(name)) {
         throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", name, nameToken.line));
     }
 
-    TokenType existingType = getTypeOfValue(varMap[name]);
+    TokenType existingType = getTypeOfValue(target->varMap[name]);
     TokenType newType = getTypeOfValue(val);
 
     if (existingType != newType) {
         throw std::runtime_error(std::format("RuntimeError: Type mismatch on reassignment to '{}' on line {}", name, nameToken.line));
     }
 
-    varMap[name] = val;
+    target->varMap[name] = val;
 }
 
-Value Environment::get(const Token& nameToken) {
-    std::string name = std::string(nameToken.lexeme);
-
-    if (varMap.contains(name)) {
-        return varMap[name];
+Value Environment::get(const Token& nameToken, int distance) {
+    Environment* target = ancestor(distance);
+    if (target == nullptr) {
+        throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", nameToken.lexeme, nameToken.line));
     }
 
-    // check parent environment
-    if (parent != nullptr) {
-        return parent->get(nameToken);
+    std::string name = std::string(nameToken.lexeme);
+
+    if (target->varMap.contains(name)) {
+        return target->varMap[name];
     }
 
     throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", name, nameToken.line));
 }
 
-struct closure Environment::getFunc(const Token& nameToken) {
-    std::string name = std::string(nameToken.lexeme);
-
-    if (closures.contains(name)) {
-        return closures[name];
+struct closure Environment::getFunc(const Token& nameToken, int distance) {
+    Environment* target = ancestor(distance);
+    if (target == nullptr) {
+        throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", nameToken.lexeme, nameToken.line));
     }
 
-    // check parent closure
-    if (parent != nullptr) {
-        return parent->getFunc(nameToken);
+    std::string name = std::string(nameToken.lexeme);
+
+    if (target->closures.contains(name)) {
+        return target->closures[name];
     }
 
     throw std::runtime_error(std::format("RuntimeError: Undefined variable '{}' on line {}", name, nameToken.line));
