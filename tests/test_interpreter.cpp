@@ -1708,7 +1708,8 @@ void test_interpreter_integration_programs() {
         std::string_view code = 
             "x: int = 15\n"
             "y: int = 25\n"
-            "z: int = x + y * 2\n"
+            "z: int = 0\n"
+            "z = x + y * 2\n"
             "print z\n"
             "z = z + 1\n"
             "print z\n";
@@ -1729,7 +1730,8 @@ void test_interpreter_integration_programs() {
     {
         std::string_view code = 
             "first: str = \"hello\"\n"
-            "second: str = first\n"
+            "second: str = \"\"\n"
+            "second = first\n"
             "print second\n"
             "print second == \"hello\"\n";
         std::vector<Token> tokens = tokenizer(code);
@@ -1970,7 +1972,8 @@ void test_interpreter_if_statement() {
     // End-to-end: if-elif-else fallthrough to else
     {
         std::string_view code = 
-            "x: int = -5\n"
+            "x: int = 0\n"
+            "x = -5\n"
             "sign: int = 0\n"
             "if x > 0:\n"
             "    sign = 1\n"

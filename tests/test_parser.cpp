@@ -1051,9 +1051,9 @@ void test_parser_var_declaration() {
         assert(std::get<bool>(std::get<literal>(decl.expression->node).val) == false);
     }
 
-    // Var declaration with complex expression
+    // None literal declaration
     {
-        std::string_view code = "result: int = 10 + 20 * 2\n";
+        std::string_view code = "x: int = None\n";
         std::vector<Token> tokens = tokenizer(code);
         Parser parser(tokens);
         std::vector<stmt> ast = parser.parse();
@@ -1061,8 +1061,91 @@ void test_parser_var_declaration() {
         assert(std::holds_alternative<varDecl>(ast[0].node));
         const auto& decl = std::get<varDecl>(ast[0].node);
         assert(decl.type == INT_TYPE);
-        assert(decl.identifier.lexeme == "result");
-        assert(std::holds_alternative<binary>(decl.expression->node));
+        assert(decl.identifier.lexeme == "x");
+        assert(std::holds_alternative<literal>(decl.expression->node));
+        assert(std::holds_alternative<std::monostate>(std::get<literal>(decl.expression->node).val));
+    }
+
+    // Error: Var declaration with binary/arithmetic expression (only literals allowed)
+    {
+        std::string_view code = "result: int = 10 + 20 * 2\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a literal as assigned value") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Var declaration with variable identifier (only literals allowed)
+    {
+        std::string_view code = "x: int = y\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a literal as assigned value") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Var declaration with unary expression (only literals allowed)
+    {
+        std::string_view code = "x: int = -5\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a literal as assigned value") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Var declaration with function call (only literals allowed)
+    {
+        std::string_view code = "x: int = get_val()\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a literal as assigned value") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Synchronization on invalid var declaration non-literal
+    {
+        std::string_view code = 
+            "x: int = 1 + 2\n"
+            "y: int = 42\n";
+        std::vector<Token> tokens = tokenizer(code);
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Expected a literal as assigned value") != std::string::npos);
+        }
+        assert(exceptionThrown);
     }
 
     // Error: Invalid type annotation (e.g. unknown type identifier)
@@ -2168,6 +2251,50 @@ void test_parser_function_definition() {
         assert(exceptionThrown);
     }
 
+    // Error: Unexpected end of file while parsing parameters
+    {
+        std::vector<Token> tokens = {
+            make_test_token(DEF, "def", 1, 1),
+            make_test_token(IDENTIFIER, "foo", 1, 5),
+            make_test_token(LEFT_PAREN, "(", 1, 8),
+            make_test_token(IDENTIFIER, "x", 1, 9),
+            make_test_token(COLON, ":", 1, 10),
+            make_test_token(END_OF_FILE, "", 1, 11)
+        };
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Unexpected end of file while parsing parameters") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Unexpected end of file after '->'
+    {
+        std::vector<Token> tokens = {
+            make_test_token(DEF, "def", 1, 1),
+            make_test_token(IDENTIFIER, "foo", 1, 5),
+            make_test_token(LEFT_PAREN, "(", 1, 8),
+            make_test_token(RIGHT_PAREN, ")", 1, 9),
+            make_test_token(ARROW, "->", 1, 11),
+            make_test_token(END_OF_FILE, "", 1, 13)
+        };
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Unexpected end of file after '->'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
     // Error: Missing colon before function block
     {
         std::string_view code = 
@@ -2320,6 +2447,27 @@ void test_parser_call_expression() {
             exceptionThrown = true;
             std::string msg = e.what();
             assert(msg.find("Expected a ')'") != std::string::npos);
+        }
+        assert(exceptionThrown);
+    }
+
+    // Error: Unexpected end of file while parsing arguments
+    {
+        std::vector<Token> tokens = {
+            make_test_token(IDENTIFIER, "foo", 1, 1),
+            make_test_token(LEFT_PAREN, "(", 1, 4),
+            make_test_token(INT, "1", 1, 5, 1),
+            make_test_token(COMMA, ",", 1, 6),
+            make_test_token(END_OF_FILE, "", 1, 7)
+        };
+        Parser parser(tokens);
+        bool exceptionThrown = false;
+        try {
+            parser.parse();
+        } catch (const std::runtime_error& e) {
+            exceptionThrown = true;
+            std::string msg = e.what();
+            assert(msg.find("Unexpected end of file while parsing function arguments") != std::string::npos);
         }
         assert(exceptionThrown);
     }

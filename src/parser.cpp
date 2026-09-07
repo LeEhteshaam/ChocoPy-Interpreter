@@ -129,7 +129,8 @@ std::vector<stmt> Parser::block() {
     while(!isAtEnd() && !check(DEDENT)) {
 
         if (check(IDENTIFIER) && peekNext().type == COLON) {
-            throw std::runtime_error(std::format("ParseError: Variable declarations are not allowed inside blocks on line {}", peek().line));
+            errors.push_back(std::format("ParseError: Variable declarations are not allowed inside blocks on line {}", peek().line));
+            throw ParseError();
         }
 
         res.push_back(statement());
@@ -152,13 +153,16 @@ struct stmt Parser::functionDefinition() {
             consume(COLON, std::format("ParseError: Expected a ':' on line {}", name.line));
             
             if (isAtEnd()) {
-                throw std::runtime_error(std::format("ParseError: Unexpected end of file while parsing parameters on line {}", name.line));
+                errors.push_back(std::format("ParseError: Unexpected end of file while parsing parameters on line {}", name.line));
+                throw ParseError();
             }
             
             TokenType type = advance().type; 
             
             if (type != INT_TYPE && type != STR_TYPE && type != BOOL_TYPE) {
-                throw std::runtime_error(std::format("ParseError: Invalid type on line {}", name.line));
+
+                errors.push_back(std::format("ParseError: Invalid type on line {}", name.line));
+                throw ParseError();
             }
 
             parameters.push_back(param { paramName, type });
@@ -171,13 +175,15 @@ struct stmt Parser::functionDefinition() {
     
     if (match({ARROW})) { 
         if (isAtEnd()) {
-            throw std::runtime_error(std::format("ParseError: Unexpected end of file after '->' on line {}", name.line));
+            errors.push_back(std::format("ParseError: Unexpected end of file after '->' on line {}", name.line));
+            throw ParseError();
         }
         
         returnType = advance().type;
         
         if (returnType != INT_TYPE && returnType != STR_TYPE && returnType != BOOL_TYPE && returnType != NONE) {
-            throw std::runtime_error(std::format("ParseError: Invalid return type on line {}", name.line));
+            errors.push_back(std::format("ParseError: Invalid return type on line {}", name.line));
+            throw ParseError();
         }
     }
 
@@ -268,6 +274,11 @@ struct stmt Parser::varDeclaration() {
     if (!isAtEnd()) {
         consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", name.line));
     }
+
+    if (!std::holds_alternative<literal>(val.node)) {
+        errors.push_back(std::format("ParseError: Expected a literal as assigned value on line {}", name.line));
+        throw ParseError();
+    }   
 
     return stmt { varDecl { 
         idType.type, 
@@ -437,7 +448,8 @@ struct expr Parser::finishCall(Token name) {
     if (!check(RIGHT_PAREN)) {
          do {
             if (isAtEnd()) {
-                throw std::runtime_error(std::format("ParseError: Unexpected end of file while parsing function arguments on line {}", previous().line));
+                errors.push_back(std::format("ParseError: Unexpected end of file while parsing function arguments on line {}", previous().line));
+                throw ParseError();
             }
 
             arguments.push_back(expression());
