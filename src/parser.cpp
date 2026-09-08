@@ -3,6 +3,9 @@
 #include <initializer_list>
 #include <ranges>
 
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 Parser::Parser(std::vector<Token> tokens) {
     this->tokens = std::move(tokens);
 }
@@ -86,10 +89,6 @@ struct stmt Parser::statement() {
     if (check(IDENTIFIER) && peekNext().type == COLON) {
         return varDeclaration();
     }
-    
-    if (check(IDENTIFIER) && peekNext().type == ASSIGN) {
-        return assignStatement();
-    }
 
     if (match({DEF})) {
         return functionDefinition();
@@ -127,7 +126,16 @@ struct stmt Parser::statement() {
         return nonlocalStatement();
     }
 
-    return expressionStatement();
+    expr e = expression();
+
+    if (match({ASSIGN})) {
+        return assignStatement(e);
+    } else {
+        if (!isAtEnd()) {
+            consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", previous().line));
+        }
+        return stmt { exprStmt { std::make_unique<expr>(std::move(e)) } };
+    }
 }
 
 struct stmt Parser::classDefinition() {
@@ -351,17 +359,33 @@ struct stmt Parser::varDeclaration() {
     }};
 }
 
-struct stmt Parser::assignStatement() {
-    Token name = consume(IDENTIFIER, "ParseError: Expected variable name");
-    consume(ASSIGN, std::format("ParseError: Expected '=' after variable name on line {}", name.line));
-    
+struct stmt Parser::assignStatement(struct expr var) {    
     expr val = expression();
+    stmt res = std::visit(overloaded {
+        [&] (varExpr& v) -> stmt {
+            return stmt { assignStmt {
+                v.name,
+                std::make_unique<expr>(std::move(val))
+            }};
+        },
+        [&] (getExpr& g) -> stmt {
+            return stmt { setStmt {
+                std::move(g.object),
+                std::move(g.name),
+                std::make_unique<expr>(std::move(val))
+            }};
+        },
+        [&] (auto& a) -> stmt {
+            errors.push_back(std::format("ParseError: Expected a variable or object field on line {}", previous().line));
+            throw ParseError();
+        }       
+    }, var.node);
     
     if (!isAtEnd()) {
         consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", previous().line));
     }
     
-    return stmt { assignStmt { name, std::make_unique<expr>(std::move(val)) } };
+    return res;
 }
 
 struct stmt Parser::printStatement() {
@@ -372,16 +396,6 @@ struct stmt Parser::printStatement() {
         consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", prev.line));
     }   
     return stmt { printStmt { std::make_unique<expr>(std::move(val)) } };
-}
-
-struct stmt Parser::expressionStatement() {
-    Token prev = previous();
-    expr val = expression();
-    std::string msg = std::format("ParseError: Expected a newline on line {}", prev.line);
-    if (!isAtEnd()) {
-        consume(NEW_LINE, std::format("ParseError: Expected a newline on line {}", prev.line));
-    }
-    return stmt { exprStmt { std::make_unique<expr>(std::move(val)) } };
 }
 
 // Methods for parsing

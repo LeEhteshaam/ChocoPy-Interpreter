@@ -35,9 +35,8 @@ private:
     // Methods for parsing
     struct stmt statement();
     struct stmt printStatement();
-    struct stmt expressionStatement();
     struct stmt varDeclaration();
-    struct stmt assignStatement();
+    struct stmt assignStatement(struct expr var);
     struct stmt ifStatement();
     struct stmt whileStatement();
     struct stmt forStatement();

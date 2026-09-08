@@ -66,6 +66,13 @@ struct assignStmt {
     int distance = 0;
 };
 
+struct setStmt {
+    std::unique_ptr<struct expr> object;
+    Token name;
+    std::unique_ptr<struct expr> value;
+    int distance = 0;
+};
+
 struct ifStmt {
     std::unique_ptr<expr> condition;
     std::vector<stmt> ifBranch;
@@ -115,5 +122,5 @@ struct classDef {
 };
 
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef, global, nonlocal, classDef> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, setStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef, global, nonlocal, classDef> node;
 };
