@@ -12,6 +12,8 @@ enum class varScopes {
 
 enum class states {
     FUNCTION,
+    CLASS,
+    METHOD,
     NONE
 };
 

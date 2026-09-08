@@ -82,10 +82,13 @@ void Resolver::traverseExpr(expr& expression) {
             }
         },
         [&](callExpr& c) {
-            c.distance = resolveRead(c.name);
+            traverseExpr(*(c.callee));
             for (auto& arg : c.arguments) {
                 traverseExpr(arg);
             }
+        },
+        [&](getExpr& g) {
+            traverseExpr(*(g.object));
         },
         [&](unary& u) { traverseExpr(*(u.right)); },
         [&](binary& b) {
@@ -102,10 +105,13 @@ void Resolver::traverseStmt(stmt& statement) {
         [&](printStmt& p) { traverseExpr(*(p.expression)); },
         [&](varDecl& v) {
             std::string id = std::string(v.identifier.lexeme);
-            if (scopes.back().contains(id)) {
-                errors.push_back(std::format("ResolveError: Already '{}' defined on line {}", id, v.identifier.line));
-            } else {
-                scopes.back()[id] = varScopes::LOCAL;
+
+            if (state != states::CLASS) {
+                if (scopes.back().contains(id)) {
+                    errors.push_back(std::format("ResolveError: Already '{}' defined on line {}", id, v.identifier.line));
+                } else {
+                    scopes.back()[id] = varScopes::LOCAL;
+                }
             }
             traverseExpr(*(v.expression));
         },
@@ -139,7 +145,7 @@ void Resolver::traverseStmt(stmt& statement) {
             }
         },
         [&](returnStmt& r) {
-            if (state != states::FUNCTION) {
+            if (state != states::FUNCTION && state != states::METHOD) {
                 errors.push_back(std::format("ResolveError: Use of 'return' outside a function on line {}", r.line));
             }
             if (r.expression) {
@@ -148,15 +154,26 @@ void Resolver::traverseStmt(stmt& statement) {
         },
         [&](funcDef& f) {
             std::string funcName = std::string(f.name.lexeme);
-            if (scopes.back().contains(funcName)) {
-                errors.push_back(std::format("ResolveError: Function '{}' already defined on line {}", f.name.lexeme, f.name.line));
-            } else {
-                scopes.back()[funcName] = varScopes::LOCAL;
+            
+            if (state != states::CLASS) {
+                if (scopes.back().contains(funcName)) {
+                    errors.push_back(std::format("ResolveError: Function '{}' already defined on line {}", f.name.lexeme, f.name.line));
+                } else {
+                    scopes.back()[funcName] = varScopes::LOCAL;
+                }
             }
 
             scopes.push_back(std::unordered_map<std::string, varScopes>());
             states prevState = state;
-            state = states::FUNCTION;
+
+            if (prevState == states::CLASS) {
+                state = states::METHOD;
+                if (f.params.empty() || f.params[0].name.lexeme != "self") {
+                    errors.push_back(std::format("ResolveError: Method '{}' must have 'self' as first parameter on line {}", f.name.lexeme, f.name.line));
+                }
+            } else {
+                state = states::FUNCTION;
+            }
 
             for (const auto& param : f.params) {
                 std::string paramName = std::string(param.name.lexeme);
@@ -167,12 +184,28 @@ void Resolver::traverseStmt(stmt& statement) {
                 }
             }
 
-            for (auto& s : *(f.body)) {
-                traverseStmt(s);
+            for (auto& stmt : *(f.body)) {
+                traverseStmt(stmt);
             }
 
             state = prevState;
             scopes.pop_back();
+        },
+        [&](classDef& c) {
+            std::string name = std::string(c.className.lexeme);
+            states prevState = state;
+            state = states::CLASS;
+
+            scopes.back()[name] = varScopes::LOCAL;
+
+            for (auto& stmt: c.body) {
+                traverseStmt(stmt);
+            }
+            state = prevState;
+        },
+        [&](setStmt& s) {
+            traverseExpr(*(s.value));
+            traverseExpr(*(s.object));
         },
         [&](global& g) { scopes.back()[std::string(g.name.lexeme)] = varScopes::GLOBAL; },
         [&](nonlocal& n) { scopes.back()[std::string(n.name.lexeme)] = varScopes::NONLOCAL; }

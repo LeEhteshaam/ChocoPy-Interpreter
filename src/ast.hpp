@@ -19,7 +19,6 @@ struct varExpr {
 struct callExpr {
     std::unique_ptr<expr> callee; 
     std::vector<expr> arguments;
-    int distance = 0;
 };
 
 struct getExpr {
@@ -70,7 +69,6 @@ struct setStmt {
     std::unique_ptr<struct expr> object;
     Token name;
     std::unique_ptr<struct expr> value;
-    int distance = 0;
 };
 
 struct ifStmt {
