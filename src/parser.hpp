@@ -45,6 +45,7 @@ private:
     struct stmt functionDefinition();
     struct stmt globalStatement();
     struct stmt nonlocalStatement();
+    struct stmt classDefinition();
     std::vector<stmt> block();
     struct expr expression();
     struct expr logicalOr();
@@ -54,7 +55,8 @@ private:
     struct expr term();
     struct expr factor();
     struct expr unary();
-    struct expr finishCall(Token name); 
+    struct expr finishCall(struct expr callee); 
+    struct expr call();
     struct expr primary();
 
 public: 

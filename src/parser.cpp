@@ -95,6 +95,10 @@ struct stmt Parser::statement() {
         return functionDefinition();
     }
 
+    if (match({CLASS})) {
+        return classDefinition();
+    }
+
     if (match({IF})) {
         return ifStatement();
     }
@@ -124,6 +128,34 @@ struct stmt Parser::statement() {
     }
 
     return expressionStatement();
+}
+
+struct stmt Parser::classDefinition() {
+    Token className = consume(IDENTIFIER, std::format("ParseError: Expected on identifier after 'class' on line {}", previous().line));
+    consume(COLON, std::format("ParseError: Expected a colon after identifier on line {}", className.line));
+    consume(NEW_LINE, std::format("ParseError: Expected a newline after class declaration on line {}", previous().line));
+    consume(INDENT, std::format("ParseError: Expected an indented block for class body on line {}", previous().line));
+    std::vector<stmt> body;
+
+    while (!isAtEnd() && !check(DEDENT)) {
+        if (match({DEF})) {
+            body.push_back(funcDef());
+        } else if (check(IDENTIFIER) && peekNext().type == COLON) { 
+            body.push_back(varDeclaration());
+        } else {
+            errors.push_back(std::format("ParseError: Can only have definitions in class body on line {}", previous.line()));
+            throw ParseError();
+        }
+    }
+
+    if (!isAtEnd()) {
+        consume(DEDENT, std::format("ParseError: Expected a dedent on line {}", previous.line()));
+    }
+
+    return stmt { classDef {
+        std::move(className),
+        std::move(body)
+    } };
 }
 
 struct stmt Parser::globalStatement() {
@@ -163,7 +195,9 @@ std::vector<stmt> Parser::block() {
         res.push_back(statement());
     }
 
-    consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
+    if (!isAtEnd()) {
+        consume(DEDENT, std::format("ParseError: Expected dedent on line {}", previous().line));
+    }
 
     return res;
 }
@@ -468,11 +502,11 @@ struct expr Parser::unary() {
         return expr { std::move(node) };
     }
 
-    // If we did not find a unary, it must be a primary
-    return primary();
+    // If we did not find a unary, it must be a call
+    return call();
 }
 
-struct expr Parser::finishCall(Token name) {
+struct expr Parser::finishCall(struct expr calle) {
     std::vector<expr> arguments;
 
     if (!check(RIGHT_PAREN)) {
@@ -488,9 +522,26 @@ struct expr Parser::finishCall(Token name) {
 
     consume(RIGHT_PAREN, std::format("ParseError: Expected a ')' on line {}", previous().line));
     return expr { callExpr { 
-        name,
+        std::make_unique<expr>(std::move(callee)),
         std::move(arguments)
     }}; 
+}
+
+expr Parser::call() {
+    expr current = primary();
+
+    while (true) {
+        if (match({LEFT_PAREN})) {
+            current = finishCall(current); 
+        } else if (match({DOT})) {
+            Token name = consume(IDENTIFIER, std::format("ParseError: Expected property name after '.' on line {}", previous().line));            
+            current = expr { getExpr { std::make_unique<expr>(std::move(current)), std::move(name) } };
+        } else {
+            break;
+        }
+    }
+
+    return current;
 }
 
 struct expr Parser::primary() {
@@ -499,10 +550,6 @@ struct expr Parser::primary() {
     if (match({NONE})) return expr { literal { previous(), std::monostate{} } };
     if (match({IDENTIFIER})) {
         Token id = previous();
-        if (match({LEFT_PAREN})) {
-            return finishCall(id);
-        }
-
         return expr { varExpr { id } };
     }
     if (match({INT, STR})) {

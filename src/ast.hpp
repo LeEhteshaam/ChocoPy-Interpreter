@@ -17,9 +17,14 @@ struct varExpr {
 };
 
 struct callExpr {
-    Token name; 
+    std::unique_ptr<expr> callee; 
     std::vector<expr> arguments;
     int distance = 0;
+};
+
+struct getExpr {
+    std::unique_ptr<expr> object; 
+    Token name;                   
 };
 
 struct unary {
@@ -38,7 +43,7 @@ struct grouping {
 };
 
 struct expr {
-    std::variant<literal, varExpr, callExpr, unary, binary, grouping> node;
+    std::variant<literal, varExpr, callExpr, getExpr, unary, binary, grouping> node;
 };
 
 struct exprStmt {
@@ -104,6 +109,11 @@ struct nonlocal {
     Token name;
 };
 
+struct classDef {
+    Token className;
+    std::vector<stmt> body;
+};
+
 struct stmt {
-    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef, global, nonlocal> node;
+    std::variant<exprStmt, printStmt, varDecl, assignStmt, ifStmt, whileStmt, forStmt, returnStmt, funcDef, global, nonlocal, classDef> node;
 };
